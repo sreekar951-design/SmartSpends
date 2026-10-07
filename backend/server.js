@@ -12,19 +12,19 @@ const JWT_SECRET = process.env.JWT_SECRET || 'your_super_secret_jwt_key_123';
 app.use(cors());
 app.use(express.json());
 
-// --- AUTHENTICATION ROUTES ---
+// --- AUTHENTICATION ROUTES (Case-Insensitive & Trimmed) ---
 
 // 1. Register
 app.post('/api/auth/register', (req, res) => {
-  const { username, password } = req.body;
-  if (!username || !password) {
-    return res.status(400).json({ error: 'Username and password are required.' });
-  }
+  let { username, password } = req.body;
+  if (!username || !password) return res.status(400).json({ error: 'Username and password are required.' });
 
+  // Clean username (lowercase and trim whitespace)
+  const cleanUsername = username.trim().toLowerCase();
   const hashedPassword = bcrypt.hashSync(password, 10);
   const sql = `INSERT INTO users (username, password) VALUES (?, ?)`;
 
-  db.run(sql, [username, hashedPassword], function (err) {
+  db.run(sql, [cleanUsername, hashedPassword], function (err) {
     if (err) {
       if (err.message.includes('UNIQUE constraint failed')) {
         return res.status(400).json({ error: 'Username already exists.' });
@@ -32,17 +32,20 @@ app.post('/api/auth/register', (req, res) => {
       return res.status(500).json({ error: err.message });
     }
 
-    const token = jwt.sign({ id: this.lastID, username }, JWT_SECRET, { expiresIn: '30d' });
-    res.status(201).json({ token, user: { id: this.lastID, username } });
+    const token = jwt.sign({ id: this.lastID, username: cleanUsername }, JWT_SECRET, { expiresIn: '30d' });
+    res.status(201).json({ token, user: { id: this.lastID, username: cleanUsername } });
   });
 });
 
 // 2. Login
 app.post('/api/auth/login', (req, res) => {
-  const { username, password } = req.body;
+  let { username, password } = req.body;
+  if (!username || !password) return res.status(400).json({ error: 'Username and password are required.' });
+
+  const cleanUsername = username.trim().toLowerCase();
   const sql = `SELECT * FROM users WHERE username = ?`;
 
-  db.get(sql, [username], (err, user) => {
+  db.get(sql, [cleanUsername], (err, user) => {
     if (err) return res.status(500).json({ error: err.message });
     if (!user) return res.status(400).json({ error: 'Invalid credentials.' });
 
@@ -54,31 +57,29 @@ app.post('/api/auth/login', (req, res) => {
   });
 });
 
-// 3. Forgot / Reset Password
+// 3. Reset Password
 app.post('/api/auth/reset-password', (req, res) => {
-  const { username, newPassword } = req.body;
-  if (!username || !newPassword) {
-    return res.status(400).json({ error: 'Username and new password are required.' });
-  }
+  let { username, newPassword } = req.body;
+  if (!username || !newPassword) return res.status(400).json({ error: 'Username and new password are required.' });
 
+  const cleanUsername = username.trim().toLowerCase();
   const sqlCheck = `SELECT id FROM users WHERE username = ?`;
-  db.get(sqlCheck, [username], (err, user) => {
+
+  db.get(sqlCheck, [cleanUsername], (err, user) => {
     if (err) return res.status(500).json({ error: err.message });
     if (!user) return res.status(404).json({ error: 'Username does not exist.' });
 
     const hashedPassword = bcrypt.hashSync(newPassword, 10);
     const sqlUpdate = `UPDATE users SET password = ? WHERE username = ?`;
 
-    db.run(sqlUpdate, [hashedPassword, username], function (err) {
+    db.run(sqlUpdate, [hashedPassword, cleanUsername], function (err) {
       if (err) return res.status(500).json({ error: err.message });
       res.json({ message: 'Password reset successful! You can now log in.' });
     });
   });
 });
 
-// --- EXPENSES ROUTES (CLOUD SAVED PER USER) ---
-
-// Get all expenses for authenticated user (Works on any device)
+// --- EXPENSES ROUTES ---
 app.get('/api/expenses', authMiddleware, (req, res) => {
   const sql = `SELECT * FROM expenses WHERE user_id = ? ORDER BY date DESC, time DESC`;
   db.all(sql, [req.user.id], (err, rows) => {
@@ -87,17 +88,11 @@ app.get('/api/expenses', authMiddleware, (req, res) => {
   });
 });
 
-// Add new expense
 app.post('/api/expenses', authMiddleware, (req, res) => {
   const { title, amount, category, date, time } = req.body;
-  if (!title || !amount || !date || !time) {
-    return res.status(400).json({ error: 'All fields are required.' });
-  }
+  if (!title || !amount || !date || !time) return res.status(400).json({ error: 'All fields are required.' });
 
-  const sql = `
-    INSERT INTO expenses (user_id, title, amount, category, date, time)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `;
+  const sql = `INSERT INTO expenses (user_id, title, amount, category, date, time) VALUES (?, ?, ?, ?, ?, ?)`;
   const params = [req.user.id, title, parseFloat(amount), category || 'Food & Dining', date, time];
 
   db.run(sql, params, function (err) {
@@ -114,7 +109,6 @@ app.post('/api/expenses', authMiddleware, (req, res) => {
   });
 });
 
-// Delete expense
 app.delete('/api/expenses/:id', authMiddleware, (req, res) => {
   const sql = `DELETE FROM expenses WHERE id = ? AND user_id = ?`;
   db.run(sql, [req.params.id, req.user.id], function (err) {
