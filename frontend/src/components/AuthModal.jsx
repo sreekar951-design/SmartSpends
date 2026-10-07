@@ -1,24 +1,46 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { User, Lock, ArrowRight, Sparkles } from 'lucide-react';
+import { User, Lock, ArrowRight, Sparkles, KeyRound } from 'lucide-react';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 export default function AuthModal({ onLoginSuccess }) {
-  const [isRegister, setIsRegister] = useState(false);
+  // mode: 'login' | 'register' | 'forgot'
+  const [mode, setMode] = useState('login');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
   const [error, setError] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    setSuccessMsg('');
     setLoading(true);
 
-    const endpoint = isRegister ? '/api/auth/register' : '/api/auth/login';
-
     try {
+      if (mode === 'forgot') {
+        const res = await fetch(`${API_URL}/api/auth/reset-password`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, newPassword })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to reset password');
+
+        setSuccessMsg(data.message);
+        setTimeout(() => {
+          setMode('login');
+          setPassword('');
+          setNewPassword('');
+          setSuccessMsg('');
+        }, 2000);
+        return;
+      }
+
+      const endpoint = mode === 'register' ? '/api/auth/register' : '/api/auth/login';
       const res = await fetch(`${API_URL}${endpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -40,6 +62,7 @@ export default function AuthModal({ onLoginSuccess }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xl px-4">
+      {/* Background Neon Glows */}
       <motion.div
         animate={{ scale: [1, 1.2, 1], opacity: [0.3, 0.5, 0.3] }}
         transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut' }}
@@ -67,11 +90,15 @@ export default function AuthModal({ onLoginSuccess }) {
           </h1>
 
           <h2 className="text-lg font-bold tracking-widest text-gray-200 mt-2 uppercase">
-            {isRegister ? 'CREATE ACCOUNT' : 'WELCOME'}
+            {mode === 'register' ? 'CREATE ACCOUNT' : mode === 'forgot' ? 'RESET PASSWORD' : 'WELCOME'}
           </h2>
           
           <p className="text-xs text-gray-400 mt-0.5">
-            {isRegister ? 'Start tracking spendings seamlessly' : 'Log in to inspect your financials'}
+            {mode === 'register'
+              ? 'Start tracking spendings seamlessly'
+              : mode === 'forgot'
+              ? 'Enter your username & new password'
+              : 'Log in to inspect your financials'}
           </p>
         </div>
 
@@ -82,6 +109,16 @@ export default function AuthModal({ onLoginSuccess }) {
             className="mb-4 p-3 bg-red-500/10 border border-red-500/30 text-red-400 text-sm rounded-xl text-center"
           >
             {error}
+          </motion.div>
+        )}
+
+        {successMsg && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            className="mb-4 p-3 bg-green-500/10 border border-green-500/30 text-green-400 text-sm rounded-xl text-center"
+          >
+            {successMsg}
           </motion.div>
         )}
 
@@ -101,20 +138,51 @@ export default function AuthModal({ onLoginSuccess }) {
             </div>
           </div>
 
-          <div>
-            <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">Password</label>
-            <div className="relative">
-              <Lock className="w-5 h-5 absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
-              <input
-                type="password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                className="w-full pl-11 pr-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-cyan-400 transition-all duration-300"
-              />
+          {mode === 'forgot' ? (
+            <div>
+              <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">New Password</label>
+              <div className="relative">
+                <KeyRound className="w-5 h-5 absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input
+                  type="password"
+                  required
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="Enter new password"
+                  className="w-full pl-11 pr-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-cyan-400 transition-all duration-300"
+                />
+              </div>
             </div>
-          </div>
+          ) : (
+            <div>
+              <div className="flex justify-between items-center mb-1">
+                <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider block">Password</label>
+                {mode === 'login' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMode('forgot');
+                      setError('');
+                    }}
+                    className="text-xs text-cyan-400 hover:underline"
+                  >
+                    Forgot Password?
+                  </button>
+                )}
+              </div>
+              <div className="relative">
+                <Lock className="w-5 h-5 absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input
+                  type="password"
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  className="w-full pl-11 pr-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-cyan-400 transition-all duration-300"
+                />
+              </div>
+            </div>
+          )}
 
           <motion.button
             whileHover={{ scale: 1.02 }}
@@ -123,23 +191,58 @@ export default function AuthModal({ onLoginSuccess }) {
             disabled={loading}
             className="w-full mt-2 py-3.5 px-4 bg-gradient-to-r from-purple-500 to-cyan-500 hover:from-purple-600 hover:to-cyan-600 text-white font-semibold rounded-xl shadow-lg shadow-purple-500/25 flex items-center justify-center gap-2 transition duration-200"
           >
-            {loading ? 'Processing...' : isRegister ? 'Register Account' : 'Login / Sign In'}
+            {loading
+              ? 'Processing...'
+              : mode === 'register'
+              ? 'Register Account'
+              : mode === 'forgot'
+              ? 'Reset Password'
+              : 'Login / Sign In'}
             <ArrowRight className="w-4 h-4" />
           </motion.button>
         </form>
 
         <div className="mt-6 text-center text-sm text-gray-400">
-          {isRegister ? 'Already have an account?' : "Don't have an account yet?"}{' '}
-          <button
-            type="button"
-            onClick={() => {
-              setIsRegister(!isRegister);
-              setError('');
-            }}
-            className="text-cyan-400 hover:underline font-medium"
-          >
-            {isRegister ? 'Sign In' : 'Create Account'}
-          </button>
+          {mode === 'forgot' ? (
+            <button
+              type="button"
+              onClick={() => {
+                setMode('login');
+                setError('');
+              }}
+              className="text-cyan-400 hover:underline font-medium"
+            >
+              ← Back to Login
+            </button>
+          ) : mode === 'register' ? (
+            <>
+              Already have an account?{' '}
+              <button
+                type="button"
+                onClick={() => {
+                  setMode('login');
+                  setError('');
+                }}
+                className="text-cyan-400 hover:underline font-medium"
+              >
+                Sign In
+              </button>
+            </>
+          ) : (
+            <>
+              Don't have an account yet?{' '}
+              <button
+                type="button"
+                onClick={() => {
+                  setMode('register');
+                  setError('');
+                }}
+                className="text-cyan-400 hover:underline font-medium"
+              >
+                Create Account
+              </button>
+            </>
+          )}
         </div>
       </motion.div>
     </div>

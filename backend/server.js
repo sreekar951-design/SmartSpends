@@ -6,7 +6,7 @@ const db = require('./database');
 const authMiddleware = require('./middleware/auth');
 
 const app = express();
-const PORT = 5000;
+const PORT = process.env.PORT || 5000;
 const JWT_SECRET = process.env.JWT_SECRET || 'your_super_secret_jwt_key_123';
 
 app.use(cors());
@@ -14,7 +14,7 @@ app.use(express.json());
 
 // --- AUTHENTICATION ROUTES ---
 
-// Register
+// 1. Register
 app.post('/api/auth/register', (req, res) => {
   const { username, password } = req.body;
   if (!username || !password) {
@@ -32,12 +32,12 @@ app.post('/api/auth/register', (req, res) => {
       return res.status(500).json({ error: err.message });
     }
 
-    const token = jwt.sign({ id: this.lastID, username }, JWT_SECRET, { expiresIn: '7d' });
+    const token = jwt.sign({ id: this.lastID, username }, JWT_SECRET, { expiresIn: '30d' });
     res.status(201).json({ token, user: { id: this.lastID, username } });
   });
 });
 
-// Login
+// 2. Login
 app.post('/api/auth/login', (req, res) => {
   const { username, password } = req.body;
   const sql = `SELECT * FROM users WHERE username = ?`;
@@ -49,14 +49,36 @@ app.post('/api/auth/login', (req, res) => {
     const validPassword = bcrypt.compareSync(password, user.password);
     if (!validPassword) return res.status(400).json({ error: 'Invalid credentials.' });
 
-    const token = jwt.sign({ id: user.id, username: user.username }, JWT_SECRET, { expiresIn: '7d' });
+    const token = jwt.sign({ id: user.id, username: user.username }, JWT_SECRET, { expiresIn: '30d' });
     res.json({ token, user: { id: user.id, username: user.username } });
   });
 });
 
-// --- EXPENSES ROUTES (USER ISOLATED) ---
+// 3. Forgot / Reset Password
+app.post('/api/auth/reset-password', (req, res) => {
+  const { username, newPassword } = req.body;
+  if (!username || !newPassword) {
+    return res.status(400).json({ error: 'Username and new password are required.' });
+  }
 
-// Get all expenses for authenticated user
+  const sqlCheck = `SELECT id FROM users WHERE username = ?`;
+  db.get(sqlCheck, [username], (err, user) => {
+    if (err) return res.status(500).json({ error: err.message });
+    if (!user) return res.status(404).json({ error: 'Username does not exist.' });
+
+    const hashedPassword = bcrypt.hashSync(newPassword, 10);
+    const sqlUpdate = `UPDATE users SET password = ? WHERE username = ?`;
+
+    db.run(sqlUpdate, [hashedPassword, username], function (err) {
+      if (err) return res.status(500).json({ error: err.message });
+      res.json({ message: 'Password reset successful! You can now log in.' });
+    });
+  });
+});
+
+// --- EXPENSES ROUTES (CLOUD SAVED PER USER) ---
+
+// Get all expenses for authenticated user (Works on any device)
 app.get('/api/expenses', authMiddleware, (req, res) => {
   const sql = `SELECT * FROM expenses WHERE user_id = ? ORDER BY date DESC, time DESC`;
   db.all(sql, [req.user.id], (err, rows) => {
@@ -76,7 +98,7 @@ app.post('/api/expenses', authMiddleware, (req, res) => {
     INSERT INTO expenses (user_id, title, amount, category, date, time)
     VALUES (?, ?, ?, ?, ?, ?)
   `;
-  const params = [req.user.id, title, parseFloat(amount), category || 'General', date, time];
+  const params = [req.user.id, title, parseFloat(amount), category || 'Food & Dining', date, time];
 
   db.run(sql, params, function (err) {
     if (err) return res.status(500).json({ error: err.message });
@@ -85,7 +107,7 @@ app.post('/api/expenses', authMiddleware, (req, res) => {
       user_id: req.user.id,
       title,
       amount: parseFloat(amount),
-      category: category || 'General',
+      category: category || 'Food & Dining',
       date,
       time
     });
