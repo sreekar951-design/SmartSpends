@@ -15,21 +15,11 @@ export default function App() {
   const [expenses, setExpenses] = useState([]);
   const [selectedDate, setSelectedDate] = useState(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
-  
-  // Controls the currently viewed month/year across the entire app
   const [viewDate, setViewDate] = useState(new Date());
 
-  useEffect(() => {
-    localStorage.clear();
-
-    const savedUser = sessionStorage.getItem('user');
-    if (savedUser && token) {
-      setUser(JSON.parse(savedUser));
-      fetchExpenses(token);
-    }
-  }, [token]);
-
+  // Function to fetch latest expenses from backend
   const fetchExpenses = async (jwtToken) => {
+    if (!jwtToken) return;
     try {
       const res = await fetch(`${API_URL}/api/expenses`, {
         headers: { Authorization: `Bearer ${jwtToken}` }
@@ -42,6 +32,31 @@ export default function App() {
       console.error('Failed to load expenses', err);
     }
   };
+
+  // Auto-sync: Poll every 10 seconds & re-fetch when tab is focused
+  useEffect(() => {
+    localStorage.clear();
+    const savedUser = sessionStorage.getItem('user');
+
+    if (savedUser && token) {
+      setUser(JSON.parse(savedUser));
+      fetchExpenses(token);
+
+      // 1. Auto-fetch whenever you switch back to this tab/app
+      const handleFocus = () => fetchExpenses(token);
+      window.addEventListener('focus', handleFocus);
+
+      // 2. Background polling every 10 seconds for instant bank SMS updates
+      const interval = setInterval(() => {
+        fetchExpenses(token);
+      }, 10000);
+
+      return () => {
+        window.removeEventListener('focus', handleFocus);
+        clearInterval(interval);
+      };
+    }
+  }, [token]);
 
   const handleLoginSuccess = (userData, jwtToken) => {
     setUser(userData);
@@ -110,6 +125,7 @@ export default function App() {
               <p className="text-xs text-gray-400">Personal Expense Tracker</p>
             </div>
 
+            {/* Top Right Stats Box */}
             <TopRightStats 
               expenses={expenses} 
               user={user} 
@@ -152,6 +168,7 @@ export default function App() {
             </div>
           </div>
 
+          {/* Add Expense Modal */}
           <ExpenseForm
             isOpen={isFormOpen}
             onClose={() => setIsFormOpen(false)}
