@@ -1,15 +1,16 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { User, Lock, ArrowRight, Sparkles, KeyRound } from 'lucide-react';
+import { User, Lock, ArrowRight, Sparkles, KeyRound, Check } from 'lucide-react';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 export default function AuthModal({ onLoginSuccess }) {
   // mode: 'login' | 'register' | 'forgot'
   const [mode, setMode] = useState('login');
-  const [username, setUsername] = useState('');
+  const [username, setUsername] = useState(localStorage.getItem('saved_username') || '');
   const [password, setPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
+  const [rememberMe, setRememberMe] = useState(true);
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [loading, setLoading] = useState(false);
@@ -36,7 +37,7 @@ export default function AuthModal({ onLoginSuccess }) {
           setPassword('');
           setNewPassword('');
           setSuccessMsg('');
-        }, 2000);
+        }, 1500);
         return;
       }
 
@@ -50,8 +51,18 @@ export default function AuthModal({ onLoginSuccess }) {
 
       if (!res.ok) throw new Error(data.error || 'Authentication failed');
 
-      sessionStorage.setItem('token', data.token);
-      sessionStorage.setItem('user', JSON.stringify(data.user));
+      // Save credentials based on "Remember Me"
+      if (rememberMe) {
+        localStorage.setItem('token', data.token);
+        localStorage.setItem('user', JSON.stringify(data.user));
+        localStorage.setItem('saved_username', username);
+      } else {
+        sessionStorage.setItem('token', data.token);
+        sessionStorage.setItem('user', JSON.stringify(data.user));
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+      }
+
       onLoginSuccess(data.user, data.token);
     } catch (err) {
       setError(err.message);
@@ -62,7 +73,7 @@ export default function AuthModal({ onLoginSuccess }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xl px-4">
-      {/* Background Neon Glows */}
+      {/* Background Glows */}
       <motion.div
         animate={{ scale: [1, 1.2, 1], opacity: [0.3, 0.5, 0.3] }}
         transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut' }}
@@ -122,13 +133,16 @@ export default function AuthModal({ onLoginSuccess }) {
           </motion.div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4" autoComplete="on">
           <div>
             <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">Username</label>
             <div className="relative">
               <User className="w-5 h-5 absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
               <input
                 type="text"
+                name="username"
+                id="username"
+                autoComplete="username"
                 required
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
@@ -145,6 +159,9 @@ export default function AuthModal({ onLoginSuccess }) {
                 <KeyRound className="w-5 h-5 absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
                 <input
                   type="password"
+                  name="new-password"
+                  id="new-password"
+                  autoComplete="new-password"
                   required
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
@@ -174,6 +191,9 @@ export default function AuthModal({ onLoginSuccess }) {
                 <Lock className="w-5 h-5 absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
                 <input
                   type="password"
+                  name="password"
+                  id="password"
+                  autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
@@ -181,6 +201,20 @@ export default function AuthModal({ onLoginSuccess }) {
                   className="w-full pl-11 pr-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-cyan-400 transition-all duration-300"
                 />
               </div>
+            </div>
+          )}
+
+          {/* Remember Me Checkbox */}
+          {mode !== 'forgot' && (
+            <div className="flex items-center gap-2 pt-1 cursor-pointer" onClick={() => setRememberMe(!rememberMe)}>
+              <div
+                className={`w-4 h-4 rounded flex items-center justify-center border transition-all ${
+                  rememberMe ? 'bg-cyan-500 border-cyan-400' : 'bg-white/5 border-white/20'
+                }`}
+              >
+                {rememberMe && <Check className="w-3 h-3 text-black stroke-[3]" />}
+              </div>
+              <span className="text-xs text-gray-400 select-none">Remember my credentials on this device</span>
             </div>
           )}
 
