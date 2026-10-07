@@ -3,12 +3,12 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Trash2, Clock, Calendar, ShoppingBag, Utensils, Car, Film, Receipt, HelpCircle } from 'lucide-react';
 
 const categoryIcons = {
-  Food: <Utensils className="w-4 h-4 text-orange-400" />,
-  Transport: <Car className="w-4 h-4 text-blue-400" />,
-  Shopping: <ShoppingBag className="w-4 h-4 text-pink-400" />,
-  Entertainment: <Film className="w-4 h-4 text-purple-400" />,
-  Bills: <Receipt className="w-4 h-4 text-yellow-400" />,
-  Other: <HelpCircle className="w-4 h-4 text-gray-400" />,
+  'Food & Dining': <Utensils className="w-4 h-4 text-orange-400" />,
+  'Transportation': <Car className="w-4 h-4 text-blue-400" />,
+  'Shopping': <ShoppingBag className="w-4 h-4 text-pink-400" />,
+  'Entertainment': <Film className="w-4 h-4 text-purple-400" />,
+  'Bills & Utilities': <Receipt className="w-4 h-4 text-yellow-400" />,
+  'Other': <HelpCircle className="w-4 h-4 text-gray-400" />,
 };
 
 export default function ExpenseList({ expenses, onDelete, filterDate, onClearFilter }) {
@@ -57,7 +57,7 @@ export default function ExpenseList({ expenses, onDelete, filterDate, onClearFil
               >
                 <div className="flex items-center gap-3">
                   <div className="p-2.5 rounded-xl bg-white/5 border border-white/10">
-                    {categoryIcons[exp.category] || categoryIcons.Other}
+                    {categoryIcons[exp.category] || <HelpCircle className="w-4 h-4 text-gray-400" />}
                   </div>
                   <div>
                     <h4 className="font-semibold text-white text-sm">{exp.title}</h4>
@@ -72,9 +72,10 @@ export default function ExpenseList({ expenses, onDelete, filterDate, onClearFil
                   </div>
                 </div>
 
+                {/* Amount with Rupee symbol and no decimals */}
                 <div className="flex items-center gap-3">
                   <span className="font-bold text-base text-pink-400">
-                    -${exp.amount.toFixed(2)}
+                    -₹{Math.round(exp.amount).toLocaleString('en-IN')}
                   </span>
                   <button
                     onClick={() => onDelete(exp.id)}
