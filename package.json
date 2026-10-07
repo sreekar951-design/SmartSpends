@@ -1,0 +1,10 @@
+{
+  "name": "expense-tracker-root",
+  "version": "1.0.0",
+  "scripts": {
+    "start": "concurrently \"npm --prefix backend start\" \"npm --prefix frontend run dev\""
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
