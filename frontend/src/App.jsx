@@ -10,12 +10,13 @@ import ExpenseList from './components/ExpenseList';
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 export default function App() {
-  // Check both localStorage (persistent) and sessionStorage (temporary)
-  const initialToken = localStorage.getItem('token') || sessionStorage.getItem('token') || '';
-  const initialUser = localStorage.getItem('user') || sessionStorage.getItem('user');
+  // Permanently remembers login per-device
+  const [token, setToken] = useState(localStorage.getItem('token') || '');
+  const [user, setUser] = useState(() => {
+    const saved = localStorage.getItem('user');
+    return saved ? JSON.parse(saved) : null;
+  });
 
-  const [user, setUser] = useState(initialUser ? JSON.parse(initialUser) : null);
-  const [token, setToken] = useState(initialToken);
   const [expenses, setExpenses] = useState([]);
   const [selectedDate, setSelectedDate] = useState(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -55,16 +56,18 @@ export default function App() {
   }, [token]);
 
   const handleLoginSuccess = (userData, jwtToken) => {
+    // Save permanently on this device
+    localStorage.setItem('token', jwtToken);
+    localStorage.setItem('user', JSON.stringify(userData));
     setUser(userData);
     setToken(jwtToken);
     fetchExpenses(jwtToken);
   };
 
   const handleLogout = () => {
+    // Clear only when explicitly clicking logout
     localStorage.removeItem('token');
     localStorage.removeItem('user');
-    sessionStorage.removeItem('token');
-    sessionStorage.removeItem('user');
     setUser(null);
     setToken('');
     setExpenses([]);
