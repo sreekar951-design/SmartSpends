@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Trash2, Clock, Calendar, ShoppingBag, Utensils, Car, Film, Receipt, HelpCircle } from 'lucide-react';
+import { Trash2, Calendar, ShoppingBag, Utensils, Car, Film, Receipt, HelpCircle } from 'lucide-react';
 
 const categoryIcons = {
   'Food & Dining': <Utensils className="w-4 h-4 text-orange-400" />,
@@ -61,18 +61,15 @@ export default function ExpenseList({ expenses, onDelete, filterDate, onClearFil
                   </div>
                   <div>
                     <h4 className="font-semibold text-white text-sm">{exp.title}</h4>
+                    {/* Only Date displayed - Time removed */}
                     <div className="flex items-center gap-3 text-[11px] text-gray-400 mt-0.5">
                       <span className="flex items-center gap-1">
                         <Calendar className="w-3 h-3 text-gray-500" /> {exp.date}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Clock className="w-3 h-3 text-gray-500" /> {exp.time}
                       </span>
                     </div>
                   </div>
                 </div>
 
-                {/* Amount with Rupee symbol and no decimals */}
                 <div className="flex items-center gap-3">
                   <span className="font-bold text-base text-pink-400">
                     -₹{Math.round(exp.amount).toLocaleString('en-IN')}
