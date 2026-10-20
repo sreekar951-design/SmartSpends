@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { User, Lock, ArrowRight, Sparkles, KeyRound } from 'lucide-react';
 
@@ -6,18 +6,30 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 export default function AuthModal({ onLoginSuccess }) {
   const [mode, setMode] = useState('login');
-  const [username, setUsername] = useState('');
+  const [username, setUsername] = useState(localStorage.getItem('saved_username') || '');
   const [password, setPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [loading, setLoading] = useState(false);
+  const [statusText, setStatusText] = useState('Processing...');
+
+  // ⚡ INSTANT WAKE-UP: Pre-warms the Render server as soon as the screen loads
+  useEffect(() => {
+    fetch(`${API_URL}/api/ping`).catch(() => {});
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
     setSuccessMsg('');
     setLoading(true);
+    setStatusText('Processing...');
+
+    // If Render was asleep, inform the user smoothly after 3 seconds
+    const timer = setTimeout(() => {
+      setStatusText('Connecting to server...');
+    }, 3000);
 
     try {
       if (mode === 'forgot') {
@@ -52,17 +64,20 @@ export default function AuthModal({ onLoginSuccess }) {
       // Save permanently on this device
       localStorage.setItem('token', data.token);
       localStorage.setItem('user', JSON.stringify(data.user));
+      localStorage.setItem('saved_username', username);
 
       onLoginSuccess(data.user, data.token);
     } catch (err) {
       setError(err.message);
     } finally {
+      clearTimeout(timer);
       setLoading(false);
     }
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xl px-4">
+      {/* Background Neon Glows */}
       <motion.div
         animate={{ scale: [1, 1.2, 1], opacity: [0.3, 0.5, 0.3] }}
         transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut' }}
@@ -198,7 +213,7 @@ export default function AuthModal({ onLoginSuccess }) {
             className="w-full mt-2 py-3.5 px-4 bg-gradient-to-r from-purple-500 to-cyan-500 hover:from-purple-600 hover:to-cyan-600 text-white font-semibold rounded-xl shadow-lg shadow-purple-500/25 flex items-center justify-center gap-2 transition duration-200"
           >
             {loading
-              ? 'Processing...'
+              ? statusText
               : mode === 'register'
               ? 'Register Account'
               : mode === 'forgot'

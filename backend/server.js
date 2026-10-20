@@ -28,6 +28,7 @@ const expenseSchema = new mongoose.Schema({
   title: { type: String, required: true },
   amount: { type: Number, required: true },
   category: { type: String, default: 'Food & Dining' },
+  paymentMethod: { type: String, default: 'UPI' },
   date: { type: String, required: true },
   time: { type: String, required: true },
   createdAt: { type: Date, default: Date.now }
@@ -38,6 +39,11 @@ const Expense = mongoose.model('Expense', expenseSchema);
 
 app.use(cors());
 app.use(express.json());
+
+// --- INSTANT WAKE-UP / PING ROUTE ---
+app.get('/api/ping', (req, res) => {
+  res.status(200).send('awake');
+});
 
 // Auth Middleware
 const authMiddleware = (req, res, next) => {
@@ -123,6 +129,7 @@ app.get('/api/expenses', authMiddleware, async (req, res) => {
       title: e.title,
       amount: e.amount,
       category: e.category,
+      paymentMethod: e.paymentMethod || 'UPI',
       date: e.date,
       time: e.time
     }));
@@ -135,12 +142,13 @@ app.get('/api/expenses', authMiddleware, async (req, res) => {
 // Add new expense
 app.post('/api/expenses', authMiddleware, async (req, res) => {
   try {
-    const { title, amount, category, date, time } = req.body;
+    const { title, amount, category, paymentMethod, date, time } = req.body;
     const expense = new Expense({
       userId: req.user.id,
       title,
       amount: Math.round(Number(amount)),
       category: category || 'Food & Dining',
+      paymentMethod: paymentMethod || 'UPI',
       date,
       time
     });
@@ -150,6 +158,7 @@ app.post('/api/expenses', authMiddleware, async (req, res) => {
       title: expense.title,
       amount: expense.amount,
       category: expense.category,
+      paymentMethod: expense.paymentMethod,
       date: expense.date,
       time: expense.time
     });
@@ -202,6 +211,7 @@ app.post('/api/expenses/auto-sms', async (req, res) => {
       title: merchant,
       amount: Math.round(amount),
       category,
+      paymentMethod: 'UPI',
       date: now.toISOString().split('T')[0],
       time: now.toTimeString().slice(0, 5)
     });
