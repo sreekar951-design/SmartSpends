@@ -10,11 +10,9 @@ import ExpenseList from './components/ExpenseList';
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 export default function App() {
-  const [token, setToken] = useState(localStorage.getItem('token') || '');
-  const [user, setUser] = useState(() => {
-    const saved = localStorage.getItem('user');
-    return saved ? JSON.parse(saved) : null;
-  });
+  // Always start locked on every fresh app launch!
+  const [token, setToken] = useState('');
+  const [user, setUser] = useState(null);
 
   const [expenses, setExpenses] = useState([]);
   const [selectedDate, setSelectedDate] = useState(null);
@@ -49,8 +47,6 @@ export default function App() {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
     setUser(null);
     setToken('');
     setExpenses([]);
@@ -94,6 +90,7 @@ export default function App() {
       <div className="fixed -top-40 -left-40 w-96 h-96 bg-purple-600/20 rounded-full blur-[140px] pointer-events-none" />
       <div className="fixed bottom-0 right-0 w-[500px] h-[500px] bg-cyan-600/15 rounded-full blur-[160px] pointer-events-none" />
 
+      {/* Always shows Passcode Lock screen on every launch */}
       {!user ? (
         <AuthModal onLoginSuccess={handleLoginSuccess} />
       ) : (
