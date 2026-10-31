@@ -10,66 +10,55 @@ import ExpenseList from './components/ExpenseList';
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 export default function App() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [token, setToken] = useState(localStorage.getItem('token') || '');
-  
-  const [expenses, setExpenses] = useState(() => {
-    const saved = localStorage.getItem('smartspends_expenses');
-    return saved ? JSON.parse(saved) : [];
+  const [user, setUser] = useState(() => {
+    const saved = localStorage.getItem('user');
+    return saved ? JSON.parse(saved) : null;
   });
 
+  const [expenses, setExpenses] = useState([]);
   const [selectedDate, setSelectedDate] = useState(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [viewDate, setViewDate] = useState(new Date());
 
-  const user = { username: 'Sreekar' };
-
-  // Sync with cloud and migrate all old data
-  const syncWithCloud = async () => {
+  const fetchExpenses = async (authToken) => {
+    if (!authToken) return;
     try {
-      const loginRes = await fetch(`${API_URL}/api/auth/passcode-login`, { method: 'POST' });
-      if (loginRes.ok) {
-        const loginData = await loginRes.json();
-        const activeToken = loginData.token;
-        setToken(activeToken);
-        localStorage.setItem('token', activeToken);
-
-        // Fetch all migrated expenses
-        const res = await fetch(`${API_URL}/api/expenses`, {
-          headers: { Authorization: `Bearer ${activeToken}` }
-        });
-        if (res.ok) {
-          const data = await res.json();
-          setExpenses(data);
-          localStorage.setItem('smartspends_expenses', JSON.stringify(data));
-        }
+      const res = await fetch(`${API_URL}/api/expenses`, {
+        headers: { Authorization: `Bearer ${authToken}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setExpenses(data);
       }
     } catch (err) {
-      console.log('Using local cached expenses.');
+      console.error('Failed to load expenses', err);
     }
   };
 
   useEffect(() => {
-    syncWithCloud();
-  }, []);
+    if (token && user) {
+      fetchExpenses(token);
+    }
+  }, [token, user]);
 
-  const handleLoginSuccess = () => {
-    setIsAuthenticated(true);
-    syncWithCloud();
+  const handleLoginSuccess = (userData, authToken) => {
+    setUser(userData);
+    setToken(authToken);
+    fetchExpenses(authToken);
   };
 
   const handleLogout = () => {
-    setIsAuthenticated(false);
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    setUser(null);
+    setToken('');
+    setExpenses([]);
   };
 
   const handleAddExpense = async (newExpense) => {
-    const localNew = { ...newExpense, id: Date.now().toString() };
-    const updated = [localNew, ...expenses];
-    setExpenses(updated);
-    localStorage.setItem('smartspends_expenses', JSON.stringify(updated));
-
     try {
-      await fetch(`${API_URL}/api/expenses`, {
+      const res = await fetch(`${API_URL}/api/expenses`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -77,21 +66,24 @@ export default function App() {
         },
         body: JSON.stringify(newExpense)
       });
+      if (res.ok) {
+        const saved = await res.json();
+        setExpenses([saved, ...expenses]);
+      }
     } catch (err) {
       console.error(err);
     }
   };
 
   const handleDeleteExpense = async (id) => {
-    const updated = expenses.filter((e) => e.id !== id);
-    setExpenses(updated);
-    localStorage.setItem('smartspends_expenses', JSON.stringify(updated));
-
     try {
-      await fetch(`${API_URL}/api/expenses/${id}`, {
+      const res = await fetch(`${API_URL}/api/expenses/${id}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` }
       });
+      if (res.ok) {
+        setExpenses(expenses.filter((e) => e.id !== id));
+      }
     } catch (err) {
       console.error(err);
     }
@@ -102,7 +94,7 @@ export default function App() {
       <div className="fixed -top-40 -left-40 w-96 h-96 bg-purple-600/20 rounded-full blur-[140px] pointer-events-none" />
       <div className="fixed bottom-0 right-0 w-[500px] h-[500px] bg-cyan-600/15 rounded-full blur-[160px] pointer-events-none" />
 
-      {!isAuthenticated ? (
+      {!user ? (
         <AuthModal onLoginSuccess={handleLoginSuccess} />
       ) : (
         <div className="max-w-7xl mx-auto space-y-6">

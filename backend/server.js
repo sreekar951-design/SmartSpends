@@ -14,9 +14,11 @@ mongoose.connect(MONGO_URI)
   .then(() => console.log('✅ Connected permanently to Cloud MongoDB Atlas!'))
   .catch((err) => console.error('❌ MongoDB Connection Error:', err));
 
+// --- USER SCHEMA (Multi-User with Passcode & Pattern) ---
 const userSchema = new mongoose.Schema({
   username: { type: String, unique: true, required: true, lowercase: true, trim: true },
-  password: { type: String, required: true },
+  authType: { type: String, default: 'pin' }, // 'pin' | 'pattern'
+  secretHash: { type: String, required: true }, // Hashed PIN or Pattern
   createdAt: { type: Date, default: Date.now }
 });
 
@@ -39,30 +41,67 @@ app.use(express.json());
 
 app.get('/api/ping', (req, res) => res.status(200).send('awake'));
 
-// --- AUTOMATIC DATA MERGE & PASSCODE LOGIN ---
-app.post('/api/auth/passcode-login', async (req, res) => {
+// --- AUTHENTICATION ROUTES (MULTI-USER) ---
+
+// 1. Create New Account
+app.post('/api/auth/register-passcode', async (req, res) => {
   try {
-    // 1. Find or create the primary user
-    let primaryUser = await User.findOne({ username: 'sreekar' });
-    if (!primaryUser) {
-      const hashedPassword = bcrypt.hashSync('100168', 10);
-      primaryUser = new User({ username: 'sreekar', password: hashedPassword });
-      await primaryUser.save();
+    let { username, authType, secret } = req.body;
+    if (!username || !secret) {
+      return res.status(400).json({ error: 'Username and passcode/pattern are required.' });
     }
 
-    // 2. Find ALL other previous accounts (like sreekar951, SREEKAR, etc.)
-    const oldUsers = await User.find({ username: { $ne: 'sreekar' } });
-    if (oldUsers.length > 0) {
-      const oldUserIds = oldUsers.map(u => u._id);
-      // Migrate ALL expenses from old accounts to the current primary user!
-      await Expense.updateMany({ userId: { $in: oldUserIds } }, { userId: primaryUser._id });
+    username = username.trim().toLowerCase();
+    const existing = await User.findOne({ username });
+    if (existing) {
+      return res.status(400).json({ error: 'Username already taken. Please choose another or login.' });
     }
 
-    // Also migrate any expenses that might be unlinked
-    await Expense.updateMany({ userId: { $exists: false } }, { userId: primaryUser._id });
+    const secretHash = bcrypt.hashSync(secret.toString(), 10);
+    const newUser = new User({
+      username,
+      authType: authType || 'pin',
+      secretHash
+    });
+    await newUser.save();
 
-    const token = jwt.sign({ id: primaryUser._id, username: 'Sreekar' }, JWT_SECRET, { expiresIn: '180d' });
-    res.json({ token, user: { id: primaryUser._id, username: 'Sreekar' } });
+    const token = jwt.sign({ id: newUser._id, username: newUser.username }, JWT_SECRET, { expiresIn: '180d' });
+    res.status(201).json({ token, user: { id: newUser._id, username: newUser.username } });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 2. Login with Passcode / Pattern
+app.post('/api/auth/login-passcode', async (req, res) => {
+  try {
+    let { username, secret } = req.body;
+    if (!username || !secret) {
+      return res.status(400).json({ error: 'Username and passcode/pattern required.' });
+    }
+
+    username = username.trim().toLowerCase();
+    let user = await User.findOne({ username });
+
+    // Backwards compatibility for primary user 'sreekar'
+    if (!user && (username === 'sreekar' || username === 'sreekar951')) {
+      const defaultHash = bcrypt.hashSync('100168', 10);
+      user = new User({ username: 'sreekar', authType: 'pin', secretHash: defaultHash });
+      await user.save();
+    }
+
+    if (!user) {
+      return res.status(404).json({ error: 'User does not exist. Click Create Account.' });
+    }
+
+    // Verify secret (or fallback to 100168 for sreekar)
+    const isValid = bcrypt.compareSync(secret.toString(), user.secretHash) || (username === 'sreekar' && secret === '100168');
+    if (!isValid) {
+      return res.status(400).json({ error: 'Incorrect Passcode or Pattern.' });
+    }
+
+    const token = jwt.sign({ id: user._id, username: user.username }, JWT_SECRET, { expiresIn: '180d' });
+    res.json({ token, user: { id: user._id, username: user.username } });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -83,10 +122,11 @@ const authMiddleware = (req, res, next) => {
   }
 };
 
-// --- EXPENSES ROUTES ---
+// --- DATA-ISOLATED EXPENSES ROUTES ---
+
+// Fetch ONLY this user's expenses
 app.get('/api/expenses', authMiddleware, async (req, res) => {
   try {
-    // Fetch all expenses belonging to primary user, plus any global expenses
     const expenses = await Expense.find({ userId: req.user.id }).sort({ date: -1, time: -1 });
     const formatted = expenses.map(e => ({
       id: e._id,
@@ -103,6 +143,7 @@ app.get('/api/expenses', authMiddleware, async (req, res) => {
   }
 });
 
+// Add expense to this user's account
 app.post('/api/expenses', authMiddleware, async (req, res) => {
   try {
     const { title, amount, category, paymentMethod, date, time } = req.body;
@@ -130,60 +171,14 @@ app.post('/api/expenses', authMiddleware, async (req, res) => {
   }
 });
 
+// Delete expense
 app.delete('/api/expenses/:id', authMiddleware, async (req, res) => {
   try {
-    await Expense.findOneAndDelete({ _id: req.params.id });
+    await Expense.findOneAndDelete({ _id: req.params.id, userId: req.user.id });
     res.json({ message: 'Expense deleted successfully.' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// Auto-SMS Webhook
-app.post('/api/expenses/auto-sms', async (req, res) => {
-  try {
-    const { smsBody } = req.body;
-    let user = await User.findOne({ username: 'sreekar' });
-    if (!user) {
-      user = await User.findOne();
-    }
-    if (!user) return res.status(404).json({ error: 'User not found.' });
-
-    const debitKeywords = ['debited', 'spent', 'paid', 'sent', 'transferred', 'withdrawn'];
-    if (!debitKeywords.some(w => smsBody.toLowerCase().includes(w))) {
-      return res.json({ message: 'Ignored non-debit SMS.' });
-    }
-
-    const amountMatch = smsBody.match(/(?:Rs\.?|INR|\₹)\s*([\d,]+(?:\.\d{1,2})?)/i);
-    const amount = amountMatch ? parseFloat(amountMatch[1].replace(/,/g, '')) : null;
-    if (!amount) return res.status(400).json({ error: 'No amount found.' });
-
-    let merchant = 'Bank Transaction';
-    const merchantMatch = smsBody.match(/(?:to|at|info\/|vpa)\s+([A-Za-z0-9\s._-]+?)(?:\s+on|\s+ref|\s+upi|\.|\,|$)/i);
-    if (merchantMatch) merchant = merchantMatch[1].trim().slice(0, 30);
-
-    let category = 'Other';
-    const textLower = (smsBody + ' ' + merchant).toLowerCase();
-    if (textLower.match(/swiggy|zomato|starbucks|restaurant|cafe|food/)) category = 'Food & Dining';
-    else if (textLower.match(/uber|ola|rapido|petrol|fuel/)) category = 'Transportation';
-    else if (textLower.match(/amazon|flipkart|myntra|shopping/)) category = 'Shopping';
-    else if (textLower.match(/netflix|hotstar|spotify|cinema/)) category = 'Entertainment';
-
-    const now = new Date();
-    const expense = new Expense({
-      userId: user._id,
-      title: merchant,
-      amount: Math.round(amount),
-      category,
-      paymentMethod: 'UPI',
-      date: now.toISOString().split('T')[0],
-      time: now.toTimeString().slice(0, 5)
-    });
-    await expense.save();
-    res.status(201).json({ message: 'Saved from Bank SMS!', expense });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.listen(PORT, () => console.log(`🚀 Backend running with auto-data migration at http://localhost:${PORT}`));
+app.listen(PORT, () => console.log(`🚀 Multi-User Passcode Backend running at http://localhost:${PORT}`));

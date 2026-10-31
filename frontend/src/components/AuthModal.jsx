@@ -1,27 +1,23 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Sparkles, Grid3X3, KeyRound, PlusCircle, ArrowLeft, Delete, CheckCircle2 } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { Sparkles, Grid3X3, KeyRound, User, PlusCircle, ArrowLeft, Delete, CheckCircle2 } from 'lucide-react';
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 export default function AuthModal({ onLoginSuccess }) {
-  // Saved credentials or default fallback (100168)
-  const savedPin = localStorage.getItem('smartspends_pin') || '100168';
-  const savedPattern = localStorage.getItem('smartspends_pattern');
-
+  const [mode, setMode] = useState('login'); // 'login' | 'create'
+  const [createStep, setCreateStep] = useState(1); // 1 = username & choose type, 2 = enter new, 3 = confirm
   const [authType, setAuthType] = useState('pin'); // 'pin' | 'pattern'
-  const [mode, setMode] = useState('unlock'); // 'unlock' | 'create'
-  const [createStep, setCreateStep] = useState(1); // 1 = enter new, 2 = confirm
 
-  // PIN states
+  const [username, setUsername] = useState(localStorage.getItem('saved_username') || 'sreekar');
   const [pin, setPin] = useState('');
   const [firstEnteredPin, setFirstEnteredPin] = useState('');
-
-  // Pattern states
   const [currentPattern, setCurrentPattern] = useState([]);
   const [firstEnteredPattern, setFirstEnteredPattern] = useState([]);
 
-  // Feedback states
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+  const [loading, setLoading] = useState(false);
 
   // 9-Dot Canvas References
   const containerRef = useRef(null);
@@ -54,34 +50,22 @@ export default function AuthModal({ onLoginSuccess }) {
 
   const processPin = (enteredPin) => {
     if (mode === 'create') {
-      if (createStep === 1) {
-        // Step 1: Save first entry and ask for confirmation
+      if (createStep === 2) {
         setFirstEnteredPin(enteredPin);
         setPin('');
-        setCreateStep(2);
-      } else {
-        // Step 2: Confirm new passcode
+        setCreateStep(3);
+      } else if (createStep === 3) {
         if (enteredPin === firstEnteredPin) {
-          localStorage.setItem('smartspends_pin', enteredPin);
-          setSuccessMsg('New Passcode Created Successfully!');
-          setTimeout(() => onLoginSuccess(), 600);
+          executeRegister(enteredPin);
         } else {
           setError('Passcodes do not match. Try again.');
           setPin('');
           setFirstEnteredPin('');
-          setCreateStep(1);
+          setCreateStep(2);
         }
       }
     } else {
-      // Unlock mode
-      const targetPin = localStorage.getItem('smartspends_pin') || '100168';
-      if (enteredPin === targetPin) {
-        setSuccessMsg('Unlocked!');
-        onLoginSuccess();
-      } else {
-        setError('Incorrect Passcode');
-        setPin('');
-      }
+      executeLogin(enteredPin);
     }
   };
 
@@ -106,9 +90,7 @@ export default function AuthModal({ onLoginSuccess }) {
     for (let dot of dots) {
       const dotPixelX = (dot.x / 100) * rect.width;
       const dotPixelY = (dot.y / 100) * rect.height;
-      if (Math.hypot(x - dotPixelX, y - dotPixelY) < 28) {
-        return dot.id;
-      }
+      if (Math.hypot(x - dotPixelX, y - dotPixelY) < 28) return dot.id;
     }
     return null;
   };
@@ -140,7 +122,7 @@ export default function AuthModal({ onLoginSuccess }) {
     setLineEnd(null);
 
     if (currentPattern.length < 4) {
-      setError('Pattern must connect at least 4 dots');
+      setError('Connect at least 4 dots');
       setCurrentPattern([]);
       return;
     }
@@ -148,53 +130,87 @@ export default function AuthModal({ onLoginSuccess }) {
     const patternStr = currentPattern.join('-');
 
     if (mode === 'create') {
-      if (createStep === 1) {
-        // Step 1: Save first pattern entry and ask for confirmation
+      if (createStep === 2) {
         setFirstEnteredPattern(currentPattern);
         setCurrentPattern([]);
-        setCreateStep(2);
-      } else {
-        // Step 2: Confirm new pattern
+        setCreateStep(3);
+      } else if (createStep === 3) {
         if (patternStr === firstEnteredPattern.join('-')) {
-          localStorage.setItem('smartspends_pattern', patternStr);
-          setSuccessMsg('New Pattern Created Successfully!');
-          setTimeout(() => onLoginSuccess(), 600);
+          executeRegister(patternStr);
         } else {
           setError('Patterns do not match. Try again.');
           setCurrentPattern([]);
           setFirstEnteredPattern([]);
-          setCreateStep(1);
+          setCreateStep(2);
         }
       }
     } else {
-      // Unlock mode
-      const targetPattern = localStorage.getItem('smartspends_pattern');
-      if (!targetPattern) {
-        setError('No pattern saved. Click "Create Pattern" below.');
-        setCurrentPattern([]);
-      } else if (patternStr === targetPattern) {
-        setSuccessMsg('Unlocked!');
-        onLoginSuccess();
-      } else {
-        setError('Incorrect Pattern');
-        setCurrentPattern([]);
-      }
+      executeLogin(patternStr);
     }
   };
 
-  const resetAllStates = () => {
+  // ------------------ API AUTH CALLS ------------------
+  const executeRegister = async (secret) => {
+    setLoading(true);
+    setError('');
+    try {
+      const res = await fetch(`${API_URL}/api/auth/register-passcode`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, authType, secret })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to create account');
+
+      localStorage.setItem('token', data.token);
+      localStorage.setItem('user', JSON.stringify(data.user));
+      localStorage.setItem('saved_username', data.user.username);
+      setSuccessMsg('Account Created Successfully!');
+      setTimeout(() => onLoginSuccess(data.user, data.token), 600);
+    } catch (err) {
+      setError(err.message);
+      resetPins();
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const executeLogin = async (secret) => {
+    setLoading(true);
+    setError('');
+    try {
+      const res = await fetch(`${API_URL}/api/auth/login-passcode`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, secret })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Login failed');
+
+      localStorage.setItem('token', data.token);
+      localStorage.setItem('user', JSON.stringify(data.user));
+      localStorage.setItem('saved_username', data.user.username);
+      setSuccessMsg('Unlocked!');
+      onLoginSuccess(data.user, data.token);
+    } catch (err) {
+      setError(err.message);
+      setPin('');
+      setCurrentPattern([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const resetPins = () => {
     setPin('');
     setFirstEnteredPin('');
     setCurrentPattern([]);
     setFirstEnteredPattern([]);
-    setError('');
-    setSuccessMsg('');
-    setCreateStep(1);
+    setCreateStep(mode === 'create' ? 1 : 1);
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xl px-4 select-none">
-      {/* Background Orbs */}
       <motion.div
         animate={{ scale: [1, 1.2, 1], opacity: [0.3, 0.5, 0.3] }}
         transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut' }}
@@ -219,35 +235,87 @@ export default function AuthModal({ onLoginSuccess }) {
           SmartSpends
         </h1>
 
-        {/* Dynamic Title based on Mode and Step */}
-        <h2 className="text-sm font-bold tracking-widest text-gray-200 mt-2 uppercase text-center">
+        <h2 className="text-sm font-bold tracking-widest text-gray-200 mt-2 mb-2 uppercase text-center">
           {mode === 'create'
             ? createStep === 1
-              ? authType === 'pin' ? 'ENTER NEW PASSCODE' : 'DRAW NEW PATTERN'
+              ? 'CREATE ACCOUNT'
+              : createStep === 2
+              ? authType === 'pin' ? 'SET 6-DIGIT PASSCODE' : 'DRAW NEW PATTERN'
               : authType === 'pin' ? 'CONFIRM PASSCODE' : 'CONFIRM PATTERN'
-            : authType === 'pin' ? 'ENTER 6-DIGIT PASSCODE' : 'DRAW PATTERN'}
+            : authType === 'pin' ? 'ENTER PASSCODE' : 'DRAW PATTERN'}
         </h2>
 
-        {/* Dynamic Subtitle */}
-        <p className="text-xs text-gray-400 mt-0.5 mb-2 text-center">
-          {mode === 'create'
-            ? createStep === 1
-              ? authType === 'pin' ? 'Choose any 6 numbers' : 'Connect at least 4 dots'
-              : 'Re-enter to confirm'
-            : ''}
-        </p>
-
         {/* Error / Success Feedback */}
-        <div className="h-5 mb-1 text-center">
+        <div className="h-5 mb-2 text-center">
           {error && <span className="text-xs text-red-400 font-semibold animate-pulse">{error}</span>}
           {successMsg && <span className="text-xs text-cyan-400 font-semibold flex items-center justify-center gap-1"><CheckCircle2 className="w-3.5 h-3.5 text-cyan-400" /> {successMsg}</span>}
+          {loading && <span className="text-xs text-purple-400 font-semibold animate-pulse">Connecting...</span>}
         </div>
 
-        {/* ================= 6-DIGIT PASSCODE ================= */}
-        {authType === 'pin' && (
+        {/* Step 1 for Account Creation: Enter Username */}
+        {mode === 'create' && createStep === 1 && (
+          <div className="w-full space-y-4 my-2">
+            <div>
+              <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">Account Username</label>
+              <div className="relative">
+                <User className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input
+                  type="text"
+                  required
+                  placeholder="Enter username (e.g. Sreekar, John)"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  className="w-full pl-10 pr-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-cyan-400"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  if (!username.trim()) return setError('Please enter a username');
+                  setAuthType('pin');
+                  setCreateStep(2);
+                }}
+                className="flex-1 py-3 px-3 rounded-xl bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/40 text-purple-300 text-xs font-bold flex items-center justify-center gap-1.5 transition"
+              >
+                <KeyRound className="w-4 h-4" /> Use 6-Digit PIN
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  if (!username.trim()) return setError('Please enter a username');
+                  setAuthType('pattern');
+                  setCreateStep(2);
+                }}
+                className="flex-1 py-3 px-3 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 text-cyan-300 text-xs font-bold flex items-center justify-center gap-1.5 transition"
+              >
+                <Grid3X3 className="w-4 h-4" /> Use Pattern Lock
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Username Banner for Unlock Mode */}
+        {mode === 'login' && (
+          <div className="flex items-center gap-2 mb-3 bg-white/[0.04] px-3.5 py-1.5 rounded-full border border-white/10 text-xs text-gray-300">
+            <span className="text-gray-400">User:</span>
+            <input
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              className="bg-transparent text-white font-bold tracking-wide focus:outline-none w-28 text-center"
+              title="Click to change username"
+            />
+          </div>
+        )}
+
+        {/* ================= 6-DIGIT PASSCODE PAD ================= */}
+        {authType === 'pin' && (mode === 'login' || (mode === 'create' && createStep > 1)) && (
           <div className="w-full flex flex-col items-center">
-            {/* 6 Digit Indicators */}
-            <div className="flex gap-3 mb-6">
+            <div className="flex gap-3 mb-5">
               {[0, 1, 2, 3, 4, 5].map((idx) => (
                 <div
                   key={idx}
@@ -260,13 +328,12 @@ export default function AuthModal({ onLoginSuccess }) {
               ))}
             </div>
 
-            {/* Numeric Keypad Grid */}
-            <div className="grid grid-cols-3 gap-3 w-64">
+            <div className="grid grid-cols-3 gap-2.5 w-60">
               {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => (
                 <button
                   key={num}
                   onClick={() => handlePinDigit(num.toString())}
-                  className="w-16 h-16 rounded-2xl bg-white/[0.04] hover:bg-white/10 active:scale-95 border border-white/5 text-xl font-bold text-white transition flex items-center justify-center shadow"
+                  className="w-16 h-14 rounded-2xl bg-white/[0.04] hover:bg-white/10 active:scale-95 border border-white/5 text-xl font-bold text-white transition flex items-center justify-center shadow"
                 >
                   {num}
                 </button>
@@ -274,13 +341,13 @@ export default function AuthModal({ onLoginSuccess }) {
               <div />
               <button
                 onClick={() => handlePinDigit('0')}
-                className="w-16 h-16 rounded-2xl bg-white/[0.04] hover:bg-white/10 active:scale-95 border border-white/5 text-xl font-bold text-white transition flex items-center justify-center shadow"
+                className="w-16 h-14 rounded-2xl bg-white/[0.04] hover:bg-white/10 active:scale-95 border border-white/5 text-xl font-bold text-white transition flex items-center justify-center shadow"
               >
                 0
               </button>
               <button
                 onClick={handlePinBackspace}
-                className="w-16 h-16 rounded-2xl bg-white/[0.04] hover:bg-red-500/20 active:scale-95 border border-white/5 text-gray-300 hover:text-red-400 transition flex items-center justify-center shadow"
+                className="w-16 h-14 rounded-2xl bg-white/[0.04] hover:bg-red-500/20 active:scale-95 border border-white/5 text-gray-300 hover:text-red-400 transition flex items-center justify-center shadow"
               >
                 <Delete className="w-5 h-5" />
               </button>
@@ -288,8 +355,8 @@ export default function AuthModal({ onLoginSuccess }) {
           </div>
         )}
 
-        {/* ================= 9-DOT PATTERN ================= */}
-        {authType === 'pattern' && (
+        {/* ================= 9-DOT PATTERN CANVAS ================= */}
+        {authType === 'pattern' && (mode === 'login' || (mode === 'create' && createStep > 1)) && (
           <div
             ref={containerRef}
             onMouseDown={handleTouchStart}
@@ -298,7 +365,7 @@ export default function AuthModal({ onLoginSuccess }) {
             onTouchStart={handleTouchStart}
             onTouchMove={handleTouchMove}
             onTouchEnd={handleTouchEnd}
-            className="w-64 h-64 relative touch-none cursor-pointer rounded-2xl bg-white/[0.02] border border-white/5 p-4 my-2"
+            className="w-60 h-60 relative touch-none cursor-pointer rounded-2xl bg-white/[0.02] border border-white/5 p-4 my-1"
           >
             <svg className="absolute inset-0 w-full h-full pointer-events-none">
               {currentPattern.map((dotIdx, i) => {
@@ -360,35 +427,34 @@ export default function AuthModal({ onLoginSuccess }) {
           </div>
         )}
 
-        {/* Action Controls & Navigation */}
+        {/* Bottom Actions & Mode Switching */}
         <div className="flex flex-col items-center gap-2.5 w-full mt-4 pt-3 border-t border-white/10 text-xs">
-          {mode === 'unlock' ? (
+          {mode === 'login' ? (
             <>
-              {/* Create Passcode/Pattern button */}
+              {/* Create Account Button */}
               <button
                 type="button"
                 onClick={() => {
                   setMode('create');
-                  resetAllStates();
+                  resetPins();
                 }}
                 className="text-pink-400 hover:text-pink-300 font-semibold flex items-center gap-1.5 transition"
               >
-                <PlusCircle className="w-3.5 h-3.5" />
-                {authType === 'pin' ? 'Create New Passcode' : 'Create New Pattern'}
+                <PlusCircle className="w-3.5 h-3.5" /> Create New Account
               </button>
 
-              {/* Switch between PIN and Pattern */}
+              {/* Switch PIN vs Pattern */}
               <button
                 type="button"
                 onClick={() => {
                   setAuthType(authType === 'pin' ? 'pattern' : 'pin');
-                  resetAllStates();
+                  resetPins();
                 }}
                 className="text-cyan-400 hover:text-cyan-300 flex items-center gap-1.5 font-medium transition"
               >
                 {authType === 'pin' ? (
                   <>
-                    <Grid3X3 className="w-3.5 h-3.5" /> Switch to 9-Dot Pattern Lock
+                    <Grid3X3 className="w-3.5 h-3.5" /> Switch to Pattern Lock
                   </>
                 ) : (
                   <>
@@ -398,16 +464,16 @@ export default function AuthModal({ onLoginSuccess }) {
               </button>
             </>
           ) : (
-            /* Cancel Creation mode */
+            /* Back to login */
             <button
               type="button"
               onClick={() => {
-                setMode('unlock');
-                resetAllStates();
+                setMode('login');
+                resetPins();
               }}
               className="text-gray-400 hover:text-white flex items-center gap-1.5 font-medium transition"
             >
-              <ArrowLeft className="w-3.5 h-3.5" /> Back to Unlock
+              <ArrowLeft className="w-3.5 h-3.5" /> Back to Login
             </button>
           )}
         </div>
