@@ -10,7 +10,7 @@ import ExpenseList from './components/ExpenseList';
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 export default function App() {
-  // Always start locked on every fresh app launch!
+  // Always start locked
   const [token, setToken] = useState('');
   const [user, setUser] = useState(null);
 
@@ -18,6 +18,25 @@ export default function App() {
   const [selectedDate, setSelectedDate] = useState(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [viewDate, setViewDate] = useState(new Date());
+
+  // 🔒 BANKING-GRADE AUTO-LOCK:
+  // Automatically locks the app whenever minimized, phone locked, or tab switched!
+  useEffect(() => {
+    const handleAutoLock = () => {
+      if (document.visibilityState === 'hidden') {
+        setUser(null);
+        setToken('');
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleAutoLock);
+    window.addEventListener('pagehide', handleAutoLock);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleAutoLock);
+      window.removeEventListener('pagehide', handleAutoLock);
+    };
+  }, []);
 
   const fetchExpenses = async (authToken) => {
     if (!authToken) return;
@@ -90,7 +109,7 @@ export default function App() {
       <div className="fixed -top-40 -left-40 w-96 h-96 bg-purple-600/20 rounded-full blur-[140px] pointer-events-none" />
       <div className="fixed bottom-0 right-0 w-[500px] h-[500px] bg-cyan-600/15 rounded-full blur-[160px] pointer-events-none" />
 
-      {/* Always shows Passcode Lock screen on every launch */}
+      {/* Lock screen is enforced whenever user is not authenticated */}
       {!user ? (
         <AuthModal onLoginSuccess={handleLoginSuccess} />
       ) : (
