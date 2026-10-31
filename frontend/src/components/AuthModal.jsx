@@ -212,10 +212,10 @@ export default function AuthModal({ onLoginSuccess }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 w-full h-full bg-[#080B11] text-gray-100 flex flex-col justify-between items-center py-8 px-6 select-none overflow-hidden touch-manipulation">
-      {/* ================= TOP SECTION ================= */}
-      <div className="flex flex-col items-center w-full max-w-sm pt-4">
-        <div className="p-3 bg-gradient-to-tr from-purple-500 to-cyan-500 rounded-2xl shadow-lg mb-3">
+    <div className="fixed inset-0 z-50 w-full h-full bg-[#080B11] text-gray-100 flex flex-col justify-between items-center py-6 px-6 select-none overflow-hidden touch-manipulation">
+      {/* ================= TOP BRANDING & USER ================= */}
+      <div className="flex flex-col items-center w-full max-w-sm pt-2">
+        <div className="p-3 bg-gradient-to-tr from-purple-500 to-cyan-500 rounded-2xl shadow-lg mb-2">
           <Sparkles className="w-6 h-6 text-white" />
         </div>
 
@@ -233,7 +233,6 @@ export default function AuthModal({ onLoginSuccess }) {
             : authType === 'pin' ? 'ENTER 6-DIGIT PASSCODE' : 'DRAW PATTERN'}
         </h2>
 
-        {/* Current User Badge in Login Mode */}
         {mode === 'login' && (
           <div className="flex items-center gap-1.5 mt-2 bg-white/[0.06] px-3.5 py-1 rounded-full border border-white/10 text-xs">
             {isChangingUser ? (
@@ -262,17 +261,15 @@ export default function AuthModal({ onLoginSuccess }) {
           </div>
         )}
 
-        {/* Messages */}
-        <div className="h-6 mt-2 text-center flex items-center justify-center">
+        <div className="h-6 mt-1 text-center flex items-center justify-center">
           {error && <span className="text-xs text-red-400 font-semibold">{error}</span>}
           {successMsg && <span className="text-xs text-cyan-400 font-semibold flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5 text-cyan-400" /> {successMsg}</span>}
           {loading && <span className="text-xs text-purple-400 font-semibold">Connecting...</span>}
         </div>
       </div>
 
-      {/* ================= MIDDLE SECTION ================= */}
-      <div className="flex flex-col items-center justify-center w-full max-w-sm flex-1 my-2">
-        {/* Step 1: Username & Choice for Account Creation */}
+      {/* ================= MIDDLE KEYPAD (LARGE NATIVE BUTTONS) ================= */}
+      <div className="flex flex-col items-center justify-center w-full max-w-sm flex-1 my-auto">
         {mode === 'create' && createStep === 1 && (
           <div className="w-full space-y-5 px-2">
             <div>
@@ -320,7 +317,7 @@ export default function AuthModal({ onLoginSuccess }) {
           </div>
         )}
 
-        {/* 6-DIGIT PASSCODE KEYPAD (Mobile Native Fullscreen Keypad) */}
+        {/* 6-DIGIT PASSCODE KEYPAD (LARGE & COMFORTABLE) */}
         {authType === 'pin' && (mode === 'login' || (mode === 'create' && createStep > 1)) && (
           <div className="flex flex-col items-center">
             {/* 6 Dots */}
@@ -337,32 +334,32 @@ export default function AuthModal({ onLoginSuccess }) {
               ))}
             </div>
 
-            {/* Circular Native Keys (3x4 Grid) */}
+            {/* LARGE Circular Phone Keys (76px x 76px) */}
             <div className="grid grid-cols-3 gap-x-6 gap-y-4">
               {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => (
                 <button
                   key={num}
                   type="button"
                   onClick={() => handlePinDigit(num.toString())}
-                  className="w-18 h-18 sm:w-20 sm:h-20 rounded-full bg-white/[0.06] active:bg-white/25 border border-white/10 text-2xl font-semibold text-white flex items-center justify-center transition-colors"
+                  className="w-[76px] h-[76px] rounded-full bg-white/[0.08] active:bg-white/25 border border-white/10 text-3xl font-medium text-white flex items-center justify-center shadow-lg transition-colors"
                 >
                   {num}
                 </button>
               ))}
-              <div />
+              <div className="w-[76px] h-[76px]" />
               <button
                 type="button"
                 onClick={() => handlePinDigit('0')}
-                className="w-18 h-18 sm:w-20 sm:h-20 rounded-full bg-white/[0.06] active:bg-white/25 border border-white/10 text-2xl font-semibold text-white flex items-center justify-center transition-colors"
+                className="w-[76px] h-[76px] rounded-full bg-white/[0.08] active:bg-white/25 border border-white/10 text-3xl font-medium text-white flex items-center justify-center shadow-lg transition-colors"
               >
                 0
               </button>
               <button
                 type="button"
                 onClick={handlePinBackspace}
-                className="w-18 h-18 sm:w-20 sm:h-20 rounded-full bg-transparent active:bg-red-500/20 text-gray-400 active:text-red-400 flex items-center justify-center transition-colors"
+                className="w-[76px] h-[76px] rounded-full bg-transparent active:bg-red-500/20 text-gray-400 active:text-red-400 flex items-center justify-center transition-colors"
               >
-                <Delete className="w-6 h-6" />
+                <Delete className="w-7 h-7" />
               </button>
             </div>
           </div>
@@ -378,7 +375,7 @@ export default function AuthModal({ onLoginSuccess }) {
             onTouchStart={handleTouchStart}
             onTouchMove={handleTouchMove}
             onTouchEnd={handleTouchEnd}
-            className="w-72 h-72 relative touch-none cursor-pointer rounded-3xl bg-white/[0.02] border border-white/5 p-4 my-2"
+            className="w-76 h-76 relative touch-none cursor-pointer rounded-3xl bg-white/[0.02] border border-white/5 p-4 my-2"
           >
             <svg className="absolute inset-0 w-full h-full pointer-events-none">
               {currentPattern.map((dotIdx, i) => {
@@ -420,7 +417,7 @@ export default function AuthModal({ onLoginSuccess }) {
                   className="absolute -translate-x-1/2 -translate-y-1/2 flex items-center justify-center"
                 >
                   <div
-                    className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                    className={`w-9 h-9 rounded-full flex items-center justify-center ${
                       isSelected ? 'bg-cyan-500/25 border-2 border-cyan-400' : 'bg-transparent'
                     }`}
                   >
@@ -437,8 +434,8 @@ export default function AuthModal({ onLoginSuccess }) {
         )}
       </div>
 
-      {/* ================= BOTTOM SECTION ================= */}
-      <div className="flex flex-col items-center gap-3 w-full max-w-sm pb-4">
+      {/* ================= BOTTOM BUTTONS ================= */}
+      <div className="flex flex-col items-center gap-3 w-full max-w-sm pb-2">
         {mode === 'login' ? (
           <>
             <button
