@@ -14,13 +14,14 @@ mongoose.connect(MONGO_URI)
   .then(() => console.log('✅ Connected permanently to Cloud MongoDB Atlas!'))
   .catch((err) => console.error('❌ MongoDB Connection Error:', err));
 
-// --- USER SCHEMA (Multi-User with Passcode & Pattern) ---
+// Schema with strict: false so it reads both old and new MongoDB records safely
 const userSchema = new mongoose.Schema({
   username: { type: String, unique: true, required: true, lowercase: true, trim: true },
-  authType: { type: String, default: 'pin' }, // 'pin' | 'pattern'
-  secretHash: { type: String, required: true }, // Hashed PIN or Pattern
+  authType: { type: String, default: 'pin' },
+  secretHash: { type: String },
+  password: { type: String }, // Legacy field support
   createdAt: { type: Date, default: Date.now }
-});
+}, { strict: false });
 
 const expenseSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
@@ -31,7 +32,7 @@ const expenseSchema = new mongoose.Schema({
   date: { type: String, required: true },
   time: { type: String, required: true },
   createdAt: { type: Date, default: Date.now }
-});
+}, { strict: false });
 
 const User = mongoose.model('User', userSchema);
 const Expense = mongoose.model('Expense', expenseSchema);
@@ -41,7 +42,7 @@ app.use(express.json());
 
 app.get('/api/ping', (req, res) => res.status(200).send('awake'));
 
-// --- AUTHENTICATION ROUTES (MULTI-USER) ---
+// --- AUTHENTICATION ROUTES ---
 
 // 1. Create New Account
 app.post('/api/auth/register-passcode', async (req, res) => {
@@ -61,7 +62,8 @@ app.post('/api/auth/register-passcode', async (req, res) => {
     const newUser = new User({
       username,
       authType: authType || 'pin',
-      secretHash
+      secretHash,
+      password: secretHash
     });
     await newUser.save();
 
@@ -72,7 +74,7 @@ app.post('/api/auth/register-passcode', async (req, res) => {
   }
 });
 
-// 2. Login with Passcode / Pattern
+// 2. Login with Passcode / Pattern (FIXED: Supports both old and new fields!)
 app.post('/api/auth/login-passcode', async (req, res) => {
   try {
     let { username, secret } = req.body;
@@ -83,21 +85,36 @@ app.post('/api/auth/login-passcode', async (req, res) => {
     username = username.trim().toLowerCase();
     let user = await User.findOne({ username });
 
-    // Backwards compatibility for primary user 'sreekar'
+    // Handle sreekar / sreekar951
     if (!user && (username === 'sreekar' || username === 'sreekar951')) {
-      const defaultHash = bcrypt.hashSync('100168', 10);
-      user = new User({ username: 'sreekar', authType: 'pin', secretHash: defaultHash });
-      await user.save();
+      user = await User.findOne({ username: { $in: ['sreekar', 'sreekar951'] } });
     }
 
     if (!user) {
       return res.status(404).json({ error: 'User does not exist. Click Create Account.' });
     }
 
-    // Verify secret (or fallback to 100168 for sreekar)
-    const isValid = bcrypt.compareSync(secret.toString(), user.secretHash) || (username === 'sreekar' && secret === '100168');
+    // Get the stored hash from either secretHash or legacy password
+    const storedHash = user.secretHash || user.password;
+    const secretStr = secret.toString();
+
+    let isValid = false;
+
+    // Direct check for master password or bcrypt compare
+    if ((username === 'sreekar' || username === 'sreekar951') && secretStr === '100168') {
+      isValid = true;
+    } else if (storedHash) {
+      isValid = bcrypt.compareSync(secretStr, storedHash);
+    }
+
     if (!isValid) {
       return res.status(400).json({ error: 'Incorrect Passcode or Pattern.' });
+    }
+
+    // Auto-update to secretHash so future logins are instant
+    if (!user.secretHash) {
+      user.secretHash = storedHash || bcrypt.hashSync(secretStr, 10);
+      await user.save();
     }
 
     const token = jwt.sign({ id: user._id, username: user.username }, JWT_SECRET, { expiresIn: '180d' });
@@ -123,8 +140,6 @@ const authMiddleware = (req, res, next) => {
 };
 
 // --- DATA-ISOLATED EXPENSES ROUTES ---
-
-// Fetch ONLY this user's expenses
 app.get('/api/expenses', authMiddleware, async (req, res) => {
   try {
     const expenses = await Expense.find({ userId: req.user.id }).sort({ date: -1, time: -1 });
@@ -143,7 +158,6 @@ app.get('/api/expenses', authMiddleware, async (req, res) => {
   }
 });
 
-// Add expense to this user's account
 app.post('/api/expenses', authMiddleware, async (req, res) => {
   try {
     const { title, amount, category, paymentMethod, date, time } = req.body;
@@ -171,7 +185,6 @@ app.post('/api/expenses', authMiddleware, async (req, res) => {
   }
 });
 
-// Delete expense
 app.delete('/api/expenses/:id', authMiddleware, async (req, res) => {
   try {
     await Expense.findOneAndDelete({ _id: req.params.id, userId: req.user.id });
@@ -181,4 +194,4 @@ app.delete('/api/expenses/:id', authMiddleware, async (req, res) => {
   }
 });
 
-app.listen(PORT, () => console.log(`🚀 Multi-User Passcode Backend running at http://localhost:${PORT}`));
+app.listen(PORT, () => console.log(`🚀 Multi-User Backend running at http://localhost:${PORT}`));
