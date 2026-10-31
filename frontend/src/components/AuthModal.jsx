@@ -4,7 +4,7 @@ import { Sparkles, Grid3X3, KeyRound, User, PlusCircle, ArrowLeft, Delete, Check
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 export default function AuthModal({ onLoginSuccess }) {
-  const [mode, setMode] = useState('login'); // 'login' | 'create'
+  const [mode, setMode] = useState('login');
   const [createStep, setCreateStep] = useState(1);
   const [authType, setAuthType] = useState('pin');
 
@@ -31,7 +31,6 @@ export default function AuthModal({ onLoginSuccess }) {
     { id: 6, x: 20, y: 80 }, { id: 7, x: 50, y: 80 }, { id: 8, x: 80, y: 80 },
   ];
 
-  // ------------------ INSTANT ZERO-LAG PIN LOGIC ------------------
   const handlePinDigit = useCallback((digit) => {
     setPin((prev) => {
       if (prev.length >= 6) return prev;
@@ -71,7 +70,6 @@ export default function AuthModal({ onLoginSuccess }) {
     }
   };
 
-  // Keyboard support for 6-digit PIN
   useEffect(() => {
     if (authType !== 'pin') return;
     const handleKeyDown = (e) => {
@@ -82,7 +80,6 @@ export default function AuthModal({ onLoginSuccess }) {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [authType, handlePinDigit, handlePinBackspace]);
 
-  // ------------------ 9-DOT PATTERN LOGIC ------------------
   const getDotIndexFromPoint = (clientX, clientY) => {
     if (!containerRef.current) return null;
     const rect = containerRef.current.getBoundingClientRect();
@@ -92,7 +89,7 @@ export default function AuthModal({ onLoginSuccess }) {
     for (let dot of dots) {
       const dotPixelX = (dot.x / 100) * rect.width;
       const dotPixelY = (dot.y / 100) * rect.height;
-      if (Math.hypot(x - dotPixelX, y - dotPixelY) < 32) return dot.id;
+      if (Math.hypot(x - dotPixelX, y - dotPixelY) < 34) return dot.id;
     }
     return null;
   };
@@ -151,7 +148,6 @@ export default function AuthModal({ onLoginSuccess }) {
     }
   };
 
-  // ------------------ API AUTH CALLS ------------------
   const executeRegister = async (secret) => {
     setLoading(true);
     setError('');
@@ -212,8 +208,8 @@ export default function AuthModal({ onLoginSuccess }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 w-full h-full bg-[#080B11] text-gray-100 flex flex-col justify-between items-center py-6 px-6 select-none overflow-hidden touch-manipulation">
-      {/* ================= TOP BRANDING & USER ================= */}
+    <div className="fixed inset-0 z-50 w-full h-full bg-[#080B11] text-gray-100 flex flex-col justify-between items-center py-6 px-4 select-none overflow-hidden touch-manipulation">
+      {/* Top Header */}
       <div className="flex flex-col items-center w-full max-w-sm pt-2">
         <div className="p-3 bg-gradient-to-tr from-purple-500 to-cyan-500 rounded-2xl shadow-lg mb-2">
           <Sparkles className="w-6 h-6 text-white" />
@@ -268,7 +264,7 @@ export default function AuthModal({ onLoginSuccess }) {
         </div>
       </div>
 
-      {/* ================= MIDDLE KEYPAD (LARGE NATIVE BUTTONS) ================= */}
+      {/* Middle Section: Big Keypad */}
       <div className="flex flex-col items-center justify-center w-full max-w-sm flex-1 my-auto">
         {mode === 'create' && createStep === 1 && (
           <div className="w-full space-y-5 px-2">
@@ -317,15 +313,16 @@ export default function AuthModal({ onLoginSuccess }) {
           </div>
         )}
 
-        {/* 6-DIGIT PASSCODE KEYPAD (LARGE & COMFORTABLE) */}
+        {/* 6-DIGIT PASSCODE KEYPAD (HARD-LOCKED 78px x 78px BUTTONS) */}
         {authType === 'pin' && (mode === 'login' || (mode === 'create' && createStep > 1)) && (
           <div className="flex flex-col items-center">
             {/* 6 Dots */}
-            <div className="flex gap-4 mb-8">
+            <div className="flex gap-4 mb-7">
               {[0, 1, 2, 3, 4, 5].map((idx) => (
                 <div
                   key={idx}
-                  className={`w-4 h-4 rounded-full border transition-colors duration-100 ${
+                  style={{ width: '16px', height: '16px' }}
+                  className={`rounded-full border transition-colors duration-100 ${
                     pin.length > idx
                       ? 'bg-cyan-400 border-cyan-300 shadow-md shadow-cyan-400/50'
                       : 'border-white/30 bg-transparent'
@@ -334,32 +331,52 @@ export default function AuthModal({ onLoginSuccess }) {
               ))}
             </div>
 
-            {/* LARGE Circular Phone Keys (76px x 76px) */}
+            {/* Guaranteed Large Circular Phone Keys */}
             <div className="grid grid-cols-3 gap-x-6 gap-y-4">
               {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => (
                 <button
                   key={num}
                   type="button"
                   onClick={() => handlePinDigit(num.toString())}
-                  className="w-[76px] h-[76px] rounded-full bg-white/[0.08] active:bg-white/25 border border-white/10 text-3xl font-medium text-white flex items-center justify-center shadow-lg transition-colors"
+                  style={{
+                    width: '78px',
+                    height: '78px',
+                    minWidth: '78px',
+                    minHeight: '78px',
+                    fontSize: '32px'
+                  }}
+                  className="rounded-full bg-white/[0.08] active:bg-white/25 border border-white/10 font-medium text-white flex items-center justify-center shadow-lg transition-colors flex-shrink-0"
                 >
                   {num}
                 </button>
               ))}
-              <div className="w-[76px] h-[76px]" />
+              <div style={{ width: '78px', height: '78px' }} />
               <button
                 type="button"
                 onClick={() => handlePinDigit('0')}
-                className="w-[76px] h-[76px] rounded-full bg-white/[0.08] active:bg-white/25 border border-white/10 text-3xl font-medium text-white flex items-center justify-center shadow-lg transition-colors"
+                style={{
+                  width: '78px',
+                  height: '78px',
+                  minWidth: '78px',
+                  minHeight: '78px',
+                  fontSize: '32px'
+                }}
+                className="rounded-full bg-white/[0.08] active:bg-white/25 border border-white/10 font-medium text-white flex items-center justify-center shadow-lg transition-colors flex-shrink-0"
               >
                 0
               </button>
               <button
                 type="button"
                 onClick={handlePinBackspace}
-                className="w-[76px] h-[76px] rounded-full bg-transparent active:bg-red-500/20 text-gray-400 active:text-red-400 flex items-center justify-center transition-colors"
+                style={{
+                  width: '78px',
+                  height: '78px',
+                  minWidth: '78px',
+                  minHeight: '78px'
+                }}
+                className="rounded-full bg-transparent active:bg-red-500/20 text-gray-400 active:text-red-400 flex items-center justify-center transition-colors flex-shrink-0"
               >
-                <Delete className="w-7 h-7" />
+                <Delete className="w-8 h-8" />
               </button>
             </div>
           </div>
@@ -375,7 +392,8 @@ export default function AuthModal({ onLoginSuccess }) {
             onTouchStart={handleTouchStart}
             onTouchMove={handleTouchMove}
             onTouchEnd={handleTouchEnd}
-            className="w-76 h-76 relative touch-none cursor-pointer rounded-3xl bg-white/[0.02] border border-white/5 p-4 my-2"
+            style={{ width: '300px', height: '300px' }}
+            className="relative touch-none cursor-pointer rounded-3xl bg-white/[0.02] border border-white/5 p-4 my-2"
           >
             <svg className="absolute inset-0 w-full h-full pointer-events-none">
               {currentPattern.map((dotIdx, i) => {
@@ -434,7 +452,7 @@ export default function AuthModal({ onLoginSuccess }) {
         )}
       </div>
 
-      {/* ================= BOTTOM BUTTONS ================= */}
+      {/* Bottom Section */}
       <div className="flex flex-col items-center gap-3 w-full max-w-sm pb-2">
         {mode === 'login' ? (
           <>

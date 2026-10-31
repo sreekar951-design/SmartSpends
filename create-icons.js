@@ -7,47 +7,81 @@ if (!fs.existsSync(publicDir)) {
   fs.mkdirSync(publicDir, { recursive: true });
 }
 
-function makePng(size, fileName) {
+function makeDollarIcon(size, fileName) {
   const width = size;
   const height = size;
 
-  // Solid purple background with RGBA
-  const rawData = Buffer.alloc(height * (1 + width * 4));
-  for (let y = 0; y < height; y++) {
-    const rowOffset = y * (1 + width * 4);
-    rawData[rowOffset] = 0; // Filter byte: None
-    for (let x = 0; x < width; x++) {
-      const pixelOffset = rowOffset + 1 + x * 4;
-      rawData[pixelOffset] = 139;     // R (Purple)
-      rawData[pixelOffset + 1] = 92;  // G
-      rawData[pixelOffset + 2] = 246; // B
-      rawData[pixelOffset + 3] = 255; // Alpha
+  // 1. Fill base with brand purple (#8b5cf6)
+  const b = Buffer.alloc(width * height * 4);
+  for (let i = 0; i < width * height; i++) {
+    b[i * 4] = 139;     // R
+    b[i * 4 + 1] = 92;  // G
+    b[i * 4 + 2] = 246; // B
+    b[i * 4 + 3] = 255; // Alpha
+  }
+
+  // 2. Draw white '$' glyph in the center
+  function drawPixel(x, y) {
+    if (x >= 0 && x < width && y >= 0 && y < height) {
+      const idx = (y * width + x) * 4;
+      b[idx] = 255;
+      b[idx + 1] = 255;
+      b[idx + 2] = 255;
+      b[idx + 3] = 255;
     }
   }
 
-  const compressedData = zlib.deflateSync(rawData);
+  function drawRect(rx, ry, rw, rh) {
+    for (let py = ry; py < ry + rh; py++) {
+      for (let px = rx; px < rx + rw; px++) {
+        drawPixel(px, py);
+      }
+    }
+  }
 
-  // PNG Signature
-  const signature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+  const cx = Math.floor(width / 2);
+  const cy = Math.floor(height / 2);
+  const stroke = Math.max(3, Math.floor(size * 0.055));
+  const r = Math.floor(size * 0.17);
 
-  // IHDR Chunk
+  // Vertical spine line
+  drawRect(cx - Math.floor(stroke / 2), cy - r - Math.floor(stroke * 2), stroke, (r + stroke) * 2 + Math.floor(stroke * 2));
+
+  // Top loop of '$'
+  drawRect(cx - r, cy - r, r * 2, stroke); // top horizontal
+  drawRect(cx - r, cy - r, stroke, r);     // top left vertical
+  drawRect(cx - r, cy - Math.floor(stroke / 2), r * 2, stroke); // middle horizontal
+
+  // Bottom loop of '$'
+  drawRect(cx + r - stroke, cy, stroke, r); // bottom right vertical
+  drawRect(cx - r, cy + r - stroke, r * 2, stroke); // bottom horizontal
+
+  // 3. Compress PNG scanlines
+  const scanlines = Buffer.alloc(height * (1 + width * 4));
+  for (let y = 0; y < height; y++) {
+    scanlines[y * (1 + width * 4)] = 0;
+    b.copy(scanlines, y * (1 + width * 4) + 1, y * width * 4, (y + 1) * width * 4);
+  }
+
+  const idat = zlib.deflateSync(scanlines);
+
+  // 4. Assemble PNG chunks
+  const sig = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
   const ihdr = Buffer.alloc(13);
   ihdr.writeUInt32BE(width, 0);
   ihdr.writeUInt32BE(height, 4);
-  ihdr[8] = 8;  // bit depth
-  ihdr[9] = 6;  // color type (RGBA)
-  ihdr[10] = 0; // compression
-  ihdr[11] = 0; // filter
-  ihdr[12] = 0; // interlace
+  ihdr[8] = 8;
+  ihdr[9] = 6;
+  ihdr[10] = 0;
+  ihdr[11] = 0;
+  ihdr[12] = 0;
 
-  function makeChunk(type, data) {
+  function chunk(type, data) {
     const len = Buffer.alloc(4);
     len.writeUInt32BE(data.length, 0);
-    const typeBuf = Buffer.from(type);
-    
-    // Compute CRC32
+    const t = Buffer.from(type);
     let c = 0xffffffff;
-    const buf = Buffer.concat([typeBuf, data]);
+    const buf = Buffer.concat([t, data]);
     for (let i = 0; i < buf.length; i++) {
       c ^= buf[i];
       for (let j = 0; j < 8; j++) {
@@ -55,23 +89,15 @@ function makePng(size, fileName) {
       }
     }
     c ^= 0xffffffff;
-
-    const crcBuf = Buffer.alloc(4);
-    crcBuf.writeInt32BE(c, 0);
-    return Buffer.concat([len, typeBuf, data, crcBuf]);
+    const crc = Buffer.alloc(4);
+    crc.writeInt32BE(c, 0);
+    return Buffer.concat([len, t, data, crc]);
   }
 
-  const pngBuffer = Buffer.concat([
-    signature,
-    makeChunk('IHDR', ihdr),
-    makeChunk('IDAT', compressedData),
-    makeChunk('IEND', Buffer.alloc(0))
-  ]);
-
-  fs.writeFileSync(path.join(publicDir, fileName), pngBuffer);
-  console.log(` Created ${fileName}`);
+  const out = Buffer.concat([sig, chunk('IHDR', ihdr), chunk('IDAT', idat), chunk('IEND', Buffer.alloc(0))]);
+  fs.writeFileSync(path.join(publicDir, fileName), out);
+  console.log(`✅ Generated ${fileName} with Dollar Sign!`);
 }
 
-makePng(192, 'icon-192.png');
-makePng(512, 'icon-512.png');
-console.log(' All App Icons are now in frontend/public!');
+makeDollarIcon(192, 'icon-192.png');
+makeDollarIcon(512, 'icon-512.png');
