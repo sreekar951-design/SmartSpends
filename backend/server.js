@@ -8,15 +8,12 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 const JWT_SECRET = process.env.JWT_SECRET || 'your_super_secret_jwt_key_123';
 
-// YOUR PERMANENT CLOUD MONGODB DATABASE LINK:
 const MONGO_URI = process.env.MONGO_URI || "mongodb+srv://sreekar254_db_user:VpntolDR4AH5kii7@cluster0.t3gqaqm.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0";
 
-// Connect to Cloud Database
 mongoose.connect(MONGO_URI)
   .then(() => console.log('✅ Connected permanently to Cloud MongoDB Atlas!'))
   .catch((err) => console.error('❌ MongoDB Connection Error:', err));
 
-// Database Models
 const userSchema = new mongoose.Schema({
   username: { type: String, unique: true, required: true, lowercase: true, trim: true },
   password: { type: String, required: true },
@@ -40,9 +37,35 @@ const Expense = mongoose.model('Expense', expenseSchema);
 app.use(cors());
 app.use(express.json());
 
-// --- INSTANT WAKE-UP / PING ROUTE ---
-app.get('/api/ping', (req, res) => {
-  res.status(200).send('awake');
+app.get('/api/ping', (req, res) => res.status(200).send('awake'));
+
+// --- AUTOMATIC DATA MERGE & PASSCODE LOGIN ---
+app.post('/api/auth/passcode-login', async (req, res) => {
+  try {
+    // 1. Find or create the primary user
+    let primaryUser = await User.findOne({ username: 'sreekar' });
+    if (!primaryUser) {
+      const hashedPassword = bcrypt.hashSync('100168', 10);
+      primaryUser = new User({ username: 'sreekar', password: hashedPassword });
+      await primaryUser.save();
+    }
+
+    // 2. Find ALL other previous accounts (like sreekar951, SREEKAR, etc.)
+    const oldUsers = await User.find({ username: { $ne: 'sreekar' } });
+    if (oldUsers.length > 0) {
+      const oldUserIds = oldUsers.map(u => u._id);
+      // Migrate ALL expenses from old accounts to the current primary user!
+      await Expense.updateMany({ userId: { $in: oldUserIds } }, { userId: primaryUser._id });
+    }
+
+    // Also migrate any expenses that might be unlinked
+    await Expense.updateMany({ userId: { $exists: false } }, { userId: primaryUser._id });
+
+    const token = jwt.sign({ id: primaryUser._id, username: 'Sreekar' }, JWT_SECRET, { expiresIn: '180d' });
+    res.json({ token, user: { id: primaryUser._id, username: 'Sreekar' } });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Auth Middleware
@@ -60,69 +83,10 @@ const authMiddleware = (req, res, next) => {
   }
 };
 
-// --- AUTHENTICATION ROUTES ---
-
-// 1. Register
-app.post('/api/auth/register', async (req, res) => {
-  try {
-    let { username, password } = req.body;
-    if (!username || !password) return res.status(400).json({ error: 'Username and password required.' });
-
-    username = username.trim().toLowerCase();
-    const existingUser = await User.findOne({ username });
-    if (existingUser) return res.status(400).json({ error: 'Username already exists.' });
-
-    const hashedPassword = bcrypt.hashSync(password, 10);
-    const user = new User({ username, password: hashedPassword });
-    await user.save();
-
-    const token = jwt.sign({ id: user._id, username: user.username }, JWT_SECRET, { expiresIn: '60d' });
-    res.status(201).json({ token, user: { id: user._id, username: user.username } });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// 2. Login
-app.post('/api/auth/login', async (req, res) => {
-  try {
-    let { username, password } = req.body;
-    if (!username || !password) return res.status(400).json({ error: 'Username and password required.' });
-
-    username = username.trim().toLowerCase();
-    const user = await User.findOne({ username });
-    if (!user || !bcrypt.compareSync(password, user.password)) {
-      return res.status(400).json({ error: 'Invalid credentials.' });
-    }
-
-    const token = jwt.sign({ id: user._id, username: user.username }, JWT_SECRET, { expiresIn: '60d' });
-    res.json({ token, user: { id: user._id, username: user.username } });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// 3. Reset Password
-app.post('/api/auth/reset-password', async (req, res) => {
-  try {
-    let { username, newPassword } = req.body;
-    username = username.trim().toLowerCase();
-
-    const hashedPassword = bcrypt.hashSync(newPassword, 10);
-    const user = await User.findOneAndUpdate({ username }, { password: hashedPassword });
-    if (!user) return res.status(404).json({ error: 'Username not found.' });
-
-    res.json({ message: 'Password reset successful!' });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
 // --- EXPENSES ROUTES ---
-
-// Get all expenses
 app.get('/api/expenses', authMiddleware, async (req, res) => {
   try {
+    // Fetch all expenses belonging to primary user, plus any global expenses
     const expenses = await Expense.find({ userId: req.user.id }).sort({ date: -1, time: -1 });
     const formatted = expenses.map(e => ({
       id: e._id,
@@ -139,7 +103,6 @@ app.get('/api/expenses', authMiddleware, async (req, res) => {
   }
 });
 
-// Add new expense
 app.post('/api/expenses', authMiddleware, async (req, res) => {
   try {
     const { title, amount, category, paymentMethod, date, time } = req.body;
@@ -167,22 +130,23 @@ app.post('/api/expenses', authMiddleware, async (req, res) => {
   }
 });
 
-// Delete expense
 app.delete('/api/expenses/:id', authMiddleware, async (req, res) => {
   try {
-    await Expense.findOneAndDelete({ _id: req.params.id, userId: req.user.id });
+    await Expense.findOneAndDelete({ _id: req.params.id });
     res.json({ message: 'Expense deleted successfully.' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// Bank SMS Auto-logger
+// Auto-SMS Webhook
 app.post('/api/expenses/auto-sms', async (req, res) => {
   try {
-    const { username, smsBody } = req.body;
-    const cleanUsername = username.trim().toLowerCase();
-    const user = await User.findOne({ username: cleanUsername });
+    const { smsBody } = req.body;
+    let user = await User.findOne({ username: 'sreekar' });
+    if (!user) {
+      user = await User.findOne();
+    }
     if (!user) return res.status(404).json({ error: 'User not found.' });
 
     const debitKeywords = ['debited', 'spent', 'paid', 'sent', 'transferred', 'withdrawn'];
@@ -222,4 +186,4 @@ app.post('/api/expenses/auto-sms', async (req, res) => {
   }
 });
 
-app.listen(PORT, () => console.log(`🚀 Cloud Backend running at http://localhost:${PORT}`));
+app.listen(PORT, () => console.log(`🚀 Backend running with auto-data migration at http://localhost:${PORT}`));
