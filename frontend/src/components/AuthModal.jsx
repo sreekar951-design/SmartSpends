@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Sparkles, Grid3X3, KeyRound, User, PlusCircle, ArrowLeft, Delete, CheckCircle2, UserCheck } from 'lucide-react';
+import { Sparkles, Grid3X3, KeyRound, User, PlusCircle, ArrowLeft, Delete, CheckCircle2, UserCheck, Fingerprint } from 'lucide-react';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
@@ -19,6 +19,7 @@ export default function AuthModal({ onLoginSuccess }) {
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [loading, setLoading] = useState(false);
+  const [isBiometricSupported, setIsBiometricSupported] = useState(false);
 
   const containerRef = useRef(null);
   const [isDrawing, setIsDrawing] = useState(false);
@@ -30,11 +31,93 @@ export default function AuthModal({ onLoginSuccess }) {
     { id: 6, x: 20, y: 80 }, { id: 7, x: 50, y: 80 }, { id: 8, x: 80, y: 80 },
   ];
 
+  // 1. Check if device supports Fingerprint / Biometrics
+  useEffect(() => {
+    if (window.PublicKeyCredential && PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable) {
+      PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()
+        .then((available) => {
+          setIsBiometricSupported(available);
+          // If previously enrolled, auto-trigger fingerprint scan on open
+          if (available && localStorage.getItem('smartspends_biometric_enabled') === 'true' && mode === 'login') {
+            setTimeout(() => triggerBiometricAuth(), 400);
+          }
+        })
+        .catch(() => setIsBiometricSupported(false));
+    }
+  }, [mode]);
+
   // Pre-wake backend in background on mount
   useEffect(() => {
     fetch(`${API_URL}/api/ping`).catch(() => {});
   }, []);
 
+  // ------------------ BIOMETRIC / FINGERPRINT LOGIC ------------------
+  const triggerBiometricAuth = async () => {
+    setError('');
+    const cleanUsername = username.trim().toLowerCase();
+    const savedUserStr = localStorage.getItem('user');
+    const cachedUser = savedUserStr ? JSON.parse(savedUserStr) : { id: 'sreekar', username: 'Sreekar' };
+    const cachedToken = localStorage.getItem('token') || 'token_sreekar';
+
+    const hasEnrolled = localStorage.getItem('smartspends_biometric_enabled') === 'true';
+
+    try {
+      if (!hasEnrolled) {
+        // First-time fingerprint setup registration
+        const challenge = new Uint8Array(32);
+        window.crypto.getRandomValues(challenge);
+
+        const createOptions = {
+          publicKey: {
+            challenge,
+            rp: { name: 'SmartSpends' },
+            user: {
+              id: Uint8Array.from(cleanUsername, c => c.charCodeAt(0)),
+              name: cleanUsername,
+              displayName: cleanUsername,
+            },
+            pubKeyCredParams: [{ alg: -7, type: 'public-key' }, { alg: -257, type: 'public-key' }],
+            authenticatorSelection: {
+              authenticatorAttachment: 'platform',
+              userVerification: 'required',
+            },
+            timeout: 60000,
+          },
+        };
+
+        const credential = await navigator.credentials.create(createOptions);
+        if (credential) {
+          localStorage.setItem('smartspends_biometric_enabled', 'true');
+          setSuccessMsg('Fingerprint Enrolled & Unlocked!');
+          setTimeout(() => onLoginSuccess(cachedUser, cachedToken), 400);
+        }
+      } else {
+        // Scan fingerprint to unlock
+        const challenge = new Uint8Array(32);
+        window.crypto.getRandomValues(challenge);
+
+        const getOptions = {
+          publicKey: {
+            challenge,
+            userVerification: 'required',
+            timeout: 60000,
+          },
+        };
+
+        const assertion = await navigator.credentials.get(getOptions);
+        if (assertion) {
+          setSuccessMsg('Fingerprint Verified!');
+          onLoginSuccess(cachedUser, cachedToken);
+        }
+      }
+    } catch (err) {
+      if (err.name !== 'NotAllowedError') {
+        setError('Fingerprint scan cancelled or failed.');
+      }
+    }
+  };
+
+  // ------------------ PIN LOGIC ------------------
   const handlePinDigit = useCallback((digit) => {
     setPin((prev) => {
       if (prev.length >= 6) return prev;
@@ -84,6 +167,7 @@ export default function AuthModal({ onLoginSuccess }) {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [authType, handlePinDigit, handlePinBackspace]);
 
+  // ------------------ 9-DOT PATTERN LOGIC ------------------
   const getDotIndexFromPoint = (clientX, clientY) => {
     if (!containerRef.current) return null;
     const rect = containerRef.current.getBoundingClientRect();
@@ -152,12 +236,11 @@ export default function AuthModal({ onLoginSuccess }) {
     }
   };
 
-  // ------------------ INSTANT ZERO-DELAY LOGIN ------------------
+  // ------------------ LOGIN & REGISTER ------------------
   const executeLogin = async (secret) => {
     const cleanUsername = username.trim().toLowerCase();
     const secretStr = secret.toString();
 
-    // ⚡ 1. INSTANT LOCAL CHECK (0.05 SECONDS RESPONSE)
     const savedPin = localStorage.getItem('smartspends_pin') || '100168';
     const savedPattern = localStorage.getItem('smartspends_pattern');
     const savedUserStr = localStorage.getItem('user');
@@ -170,12 +253,10 @@ export default function AuthModal({ onLoginSuccess }) {
       (secretStr === savedPattern);
 
     if (isMatch) {
-      // 🚀 UNLOCK IMMEDIATELY WITHOUT WAITING FOR SERVER!
       setSuccessMsg('Unlocked!');
       localStorage.setItem('saved_username', cleanUsername);
       onLoginSuccess(cachedUser, cachedToken);
 
-      // Silently sync with server in background
       fetch(`${API_URL}/api/auth/login-passcode`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -189,7 +270,6 @@ export default function AuthModal({ onLoginSuccess }) {
       return;
     }
 
-    // 2. If not matched locally, check server
     setLoading(true);
     setError('');
     try {
@@ -306,7 +386,7 @@ export default function AuthModal({ onLoginSuccess }) {
         </div>
       </div>
 
-      {/* Middle Section: Big Keypad */}
+      {/* Middle Section: Large Keypad + Fingerprint */}
       <div className="flex flex-col items-center justify-center w-full max-w-sm flex-1 my-auto">
         {mode === 'create' && createStep === 1 && (
           <div className="w-full space-y-5 px-2">
@@ -355,9 +435,10 @@ export default function AuthModal({ onLoginSuccess }) {
           </div>
         )}
 
-        {/* 6-DIGIT PASSCODE KEYPAD */}
+        {/* 6-DIGIT PASSCODE KEYPAD WITH FINGERPRINT BUTTON IN CORNER */}
         {authType === 'pin' && (mode === 'login' || (mode === 'create' && createStep > 1)) && (
           <div className="flex flex-col items-center">
+            {/* 6 Dots */}
             <div className="flex gap-4 mb-7">
               {[0, 1, 2, 3, 4, 5].map((idx) => (
                 <div
@@ -372,48 +453,50 @@ export default function AuthModal({ onLoginSuccess }) {
               ))}
             </div>
 
+            {/* Circular Keypad Grid */}
             <div className="grid grid-cols-3 gap-x-6 gap-y-4">
               {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => (
                 <button
                   key={num}
                   type="button"
                   onClick={() => handlePinDigit(num.toString())}
-                  style={{
-                    width: '78px',
-                    height: '78px',
-                    minWidth: '78px',
-                    minHeight: '78px',
-                    fontSize: '32px'
-                  }}
+                  style={{ width: '78px', height: '78px', minWidth: '78px', minHeight: '78px', fontSize: '32px' }}
                   className="rounded-full bg-white/[0.08] active:bg-white/25 border border-white/10 font-medium text-white flex items-center justify-center shadow-lg transition-colors flex-shrink-0"
                 >
                   {num}
                 </button>
               ))}
-              <div style={{ width: '78px', height: '78px' }} />
+
+              {/* FINGERPRINT BUTTON IN BOTTOM-LEFT CORNER */}
+              {mode === 'login' ? (
+                <button
+                  type="button"
+                  onClick={triggerBiometricAuth}
+                  style={{ width: '78px', height: '78px', minWidth: '78px', minHeight: '78px' }}
+                  className="rounded-full bg-cyan-500/15 active:bg-cyan-500/30 border border-cyan-500/30 text-cyan-300 flex items-center justify-center shadow-lg transition-colors flex-shrink-0"
+                  title="Unlock with Fingerprint"
+                >
+                  <Fingerprint className="w-9 h-9" />
+                </button>
+              ) : (
+                <div style={{ width: '78px', height: '78px' }} />
+              )}
+
+              {/* Zero */}
               <button
                 type="button"
                 onClick={() => handlePinDigit('0')}
-                style={{
-                  width: '78px',
-                  height: '78px',
-                  minWidth: '78px',
-                  minHeight: '78px',
-                  fontSize: '32px'
-                }}
+                style={{ width: '78px', height: '78px', minWidth: '78px', minHeight: '78px', fontSize: '32px' }}
                 className="rounded-full bg-white/[0.08] active:bg-white/25 border border-white/10 font-medium text-white flex items-center justify-center shadow-lg transition-colors flex-shrink-0"
               >
                 0
               </button>
+
+              {/* Backspace */}
               <button
                 type="button"
                 onClick={handlePinBackspace}
-                style={{
-                  width: '78px',
-                  height: '78px',
-                  minWidth: '78px',
-                  minHeight: '78px'
-                }}
+                style={{ width: '78px', height: '78px', minWidth: '78px', minHeight: '78px' }}
                 className="rounded-full bg-transparent active:bg-red-500/20 text-gray-400 active:text-red-400 flex items-center justify-center transition-colors flex-shrink-0"
               >
                 <Delete className="w-8 h-8" />
