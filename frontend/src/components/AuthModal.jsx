@@ -3,6 +3,13 @@ import { Sparkles, Grid3X3, KeyRound, User, PlusCircle, ArrowLeft, Delete, Check
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
+function bufferToBase64(buffer) {
+  return btoa(String.fromCharCode(...new Uint8Array(buffer)));
+}
+function base64ToBuffer(base64) {
+  return Uint8Array.from(atob(base64), c => c.charCodeAt(0)).buffer;
+}
+
 export default function AuthModal({ onLoginSuccess }) {
   const [mode, setMode] = useState('login');
   const [createStep, setCreateStep] = useState(1);
@@ -30,24 +37,45 @@ export default function AuthModal({ onLoginSuccess }) {
     { id: 6, x: 20, y: 80 }, { id: 7, x: 50, y: 80 }, { id: 8, x: 80, y: 80 },
   ];
 
-  // ------------------ FINGERPRINT SCANNER LOGIC ------------------
-  const triggerBiometricAuth = useCallback(async () => {
+  useEffect(() => {
+    fetch(`${API_URL}/api/ping`).catch(() => {});
+  }, []);
+
+  // ------------------ AUTO-TRIGGER BIOMETRIC SCANNER ON APP OPEN ------------------
+  useEffect(() => {
+    if (mode === 'login' && window.PublicKeyCredential) {
+      const autoTimer = setTimeout(() => {
+        triggerBiometricAuth(false);
+      }, 400); // Pops up automatically on app launch
+      return () => clearTimeout(autoTimer);
+    }
+  }, [mode]);
+
+  const triggerBiometricAuth = async (isManualTap = true) => {
     setError('');
     const cleanUsername = username.trim().toLowerCase();
     const savedUserStr = localStorage.getItem('user');
     const cachedUser = savedUserStr ? JSON.parse(savedUserStr) : { id: 'sreekar', username: 'Sreekar' };
     const cachedToken = localStorage.getItem('token') || 'token_sreekar';
 
-    if (!window.PublicKeyCredential) return;
+    if (!window.PublicKeyCredential) {
+      if (isManualTap) setError('Fingerprint not supported on this browser.');
+      return;
+    }
 
     const savedCredId = localStorage.getItem(`smartspends_passkey_${cleanUsername}`);
 
     const createPasskey = async () => {
+      setSuccessMsg('Touch fingerprint sensor to register...');
       const challenge = crypto.getRandomValues(new Uint8Array(32));
+
       const createOptions = {
         publicKey: {
           challenge,
-          rp: { name: 'SmartSpends', id: window.location.hostname },
+          rp: {
+            name: 'SmartSpends',
+            id: window.location.hostname
+          },
           user: {
             id: Uint8Array.from(cleanUsername, c => c.charCodeAt(0)),
             name: `${cleanUsername}@smartspends`,
@@ -69,16 +97,17 @@ export default function AuthModal({ onLoginSuccess }) {
 
       const cred = await navigator.credentials.create(createOptions);
       if (cred) {
-        const b64 = btoa(String.fromCharCode(...new Uint8Array(cred.rawId)));
+        const b64 = bufferToBase64(cred.rawId);
         localStorage.setItem(`smartspends_passkey_${cleanUsername}`, b64);
         setSuccessMsg('Fingerprint Verified!');
-        onLoginSuccess(cachedUser, cachedToken);
+        setTimeout(() => onLoginSuccess(cachedUser, cachedToken), 300);
       }
     };
 
     const verifyPasskey = async (b64Id) => {
+      setSuccessMsg('Scanning fingerprint...');
       const challenge = crypto.getRandomValues(new Uint8Array(32));
-      const binary = Uint8Array.from(atob(b64Id), c => c.charCodeAt(0)).buffer;
+      const binary = base64ToBuffer(b64Id);
 
       const getOptions = {
         publicKey: {
@@ -103,30 +132,28 @@ export default function AuthModal({ onLoginSuccess }) {
 
     try {
       if (!savedCredId) {
-        await createPasskey();
+        if (isManualTap) {
+          await createPasskey();
+        }
       } else {
         try {
           await verifyPasskey(savedCredId);
         } catch {
-          localStorage.removeItem(`smartspends_passkey_${cleanUsername}`);
-          await createPasskey();
+          if (isManualTap) {
+            localStorage.removeItem(`smartspends_passkey_${cleanUsername}`);
+            await createPasskey();
+          }
         }
       }
-    } catch {
-      // Silently allow user to type PIN or touch sensor again
+    } catch (err) {
+      setSuccessMsg('');
+      if (err.name === 'NotAllowedError') {
+        if (isManualTap) setError('Cancelled. Use PIN or tap sensor again.');
+      } else {
+        if (isManualTap) setError('Fingerprint error. Use PIN below.');
+      }
     }
-  }, [username, onLoginSuccess]);
-
-  // Auto-launch fingerprint scanner immediately when the app opens!
-  useEffect(() => {
-    fetch(`${API_URL}/api/ping`).catch(() => {});
-    if (mode === 'login') {
-      const timer = setTimeout(() => {
-        triggerBiometricAuth();
-      }, 250);
-      return () => clearTimeout(timer);
-    }
-  }, [mode, triggerBiometricAuth]);
+  };
 
   // ------------------ PIN LOGIC ------------------
   const handlePinDigit = useCallback((digit) => {
@@ -341,18 +368,18 @@ export default function AuthModal({ onLoginSuccess }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 w-full h-full bg-[#080B11] text-gray-100 flex flex-col justify-between items-center py-4 px-4 select-none overflow-hidden touch-manipulation">
+    <div className="fixed inset-0 z-50 w-full h-full bg-[#080B11] text-gray-100 flex flex-col justify-between items-center py-6 px-4 select-none overflow-hidden touch-manipulation">
       {/* Top Header */}
-      <div className="flex flex-col items-center w-full max-w-sm pt-1">
-        <div className="p-2.5 bg-gradient-to-tr from-purple-500 to-cyan-500 rounded-2xl shadow-lg mb-1.5">
-          <Sparkles className="w-5 h-5 text-white" />
+      <div className="flex flex-col items-center w-full max-w-sm pt-2">
+        <div className="p-3 bg-gradient-to-tr from-purple-500 to-cyan-500 rounded-2xl shadow-lg mb-2">
+          <Sparkles className="w-6 h-6 text-white" />
         </div>
 
-        <h1 className="text-xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-purple-400 via-pink-400 to-cyan-400">
+        <h1 className="text-2xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-purple-400 via-pink-400 to-cyan-400">
           SmartSpends
         </h1>
 
-        <h2 className="text-[11px] font-bold tracking-widest text-gray-300 mt-1 uppercase text-center">
+        <h2 className="text-xs font-bold tracking-widest text-gray-300 mt-2 uppercase text-center">
           {mode === 'create'
             ? createStep === 1
               ? 'CREATE ACCOUNT'
@@ -363,7 +390,7 @@ export default function AuthModal({ onLoginSuccess }) {
         </h2>
 
         {mode === 'login' && (
-          <div className="flex items-center gap-1.5 mt-1.5 bg-white/[0.06] px-3 py-0.5 rounded-full border border-white/10 text-xs">
+          <div className="flex items-center gap-1.5 mt-2 bg-white/[0.06] px-3.5 py-1 rounded-full border border-white/10 text-xs">
             {isChangingUser ? (
               <input
                 type="text"
@@ -376,12 +403,12 @@ export default function AuthModal({ onLoginSuccess }) {
               />
             ) : (
               <>
-                <span className="text-gray-400 flex items-center gap-1"><UserCheck className="w-3 h-3 text-cyan-400" /> User:</span>
+                <span className="text-gray-400 flex items-center gap-1"><UserCheck className="w-3.5 h-3.5 text-cyan-400" /> User:</span>
                 <span className="text-cyan-300 font-bold uppercase">{username}</span>
                 <button
                   type="button"
                   onClick={() => setIsChangingUser(true)}
-                  className="text-[10px] text-gray-400 hover:text-white underline ml-1"
+                  className="text-[11px] text-gray-400 hover:text-white underline ml-1"
                 >
                   (switch)
                 </button>
@@ -390,14 +417,14 @@ export default function AuthModal({ onLoginSuccess }) {
           </div>
         )}
 
-        <div className="h-5 mt-1 text-center flex items-center justify-center">
+        <div className="h-6 mt-1 text-center flex items-center justify-center">
           {error && <span className="text-xs text-red-400 font-semibold">{error}</span>}
           {successMsg && <span className="text-xs text-cyan-400 font-semibold flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5 text-cyan-400" /> {successMsg}</span>}
           {loading && <span className="text-xs text-purple-400 font-semibold">Connecting...</span>}
         </div>
       </div>
 
-      {/* Middle Section: Keypad + In-Display Fingerprint Directly Under 0 */}
+      {/* Middle Section: Keypad */}
       <div className="flex flex-col items-center justify-center w-full max-w-sm flex-1 my-auto">
         {mode === 'create' && createStep === 1 && (
           <div className="w-full space-y-5 px-2">
@@ -450,11 +477,11 @@ export default function AuthModal({ onLoginSuccess }) {
         {authType === 'pin' && (mode === 'login' || (mode === 'create' && createStep > 1)) && (
           <div className="flex flex-col items-center">
             {/* 6 Dots */}
-            <div className="flex gap-4 mb-5">
+            <div className="flex gap-4 mb-6">
               {[0, 1, 2, 3, 4, 5].map((idx) => (
                 <div
                   key={idx}
-                  style={{ width: '14px', height: '14px' }}
+                  style={{ width: '16px', height: '16px' }}
                   className={`rounded-full border transition-colors duration-100 ${
                     pin.length > idx
                       ? 'bg-cyan-400 border-cyan-300 shadow-md shadow-cyan-400/50'
@@ -464,28 +491,28 @@ export default function AuthModal({ onLoginSuccess }) {
               ))}
             </div>
 
-            {/* Circular Keypad Grid */}
-            <div className="grid grid-cols-3 gap-x-6 gap-y-3">
+            {/* Standard Keypad Grid (Bottom-Left is empty, 0 in center, Backspace on right) */}
+            <div className="grid grid-cols-3 gap-x-6 gap-y-3.5">
               {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => (
                 <button
                   key={num}
                   type="button"
                   onClick={() => handlePinDigit(num.toString())}
-                  style={{ width: '74px', height: '74px', minWidth: '74px', minHeight: '74px', fontSize: '30px' }}
+                  style={{ width: '78px', height: '78px', minWidth: '78px', minHeight: '78px', fontSize: '32px' }}
                   className="rounded-full bg-white/[0.08] active:bg-white/25 border border-white/10 font-medium text-white flex items-center justify-center shadow-lg transition-colors flex-shrink-0"
                 >
                   {num}
                 </button>
               ))}
 
-              {/* Empty Left Slot */}
-              <div style={{ width: '74px', height: '74px' }} />
+              {/* Empty Spacer */}
+              <div style={{ width: '78px', height: '78px' }} />
 
               {/* Zero */}
               <button
                 type="button"
                 onClick={() => handlePinDigit('0')}
-                style={{ width: '74px', height: '74px', minWidth: '74px', minHeight: '74px', fontSize: '30px' }}
+                style={{ width: '78px', height: '78px', minWidth: '78px', minHeight: '78px', fontSize: '32px' }}
                 className="rounded-full bg-white/[0.08] active:bg-white/25 border border-white/10 font-medium text-white flex items-center justify-center shadow-lg transition-colors flex-shrink-0"
               >
                 0
@@ -495,25 +522,25 @@ export default function AuthModal({ onLoginSuccess }) {
               <button
                 type="button"
                 onClick={handlePinBackspace}
-                style={{ width: '74px', height: '74px', minWidth: '74px', minHeight: '74px' }}
+                style={{ width: '78px', height: '78px', minWidth: '78px', minHeight: '78px' }}
                 className="rounded-full bg-transparent active:bg-red-500/20 text-gray-400 active:text-red-400 flex items-center justify-center transition-colors flex-shrink-0"
               >
-                <Delete className="w-7 h-7" />
+                <Delete className="w-8 h-8" />
               </button>
             </div>
 
-            {/* IN-DISPLAY FINGERPRINT SENSOR DIRECTLY UNDER '0' */}
+            {/* 📍 NATIVE IN-DISPLAY FINGERPRINT SENSOR ZONE DIRECTLY UNDER 0 */}
             {mode === 'login' && (
-              <div className="mt-5 flex flex-col items-center">
+              <div className="flex flex-col items-center mt-4">
                 <button
                   type="button"
-                  onTouchStart={triggerBiometricAuth}
-                  onClick={triggerBiometricAuth}
-                  style={{ width: '68px', height: '68px' }}
-                  className="rounded-full bg-cyan-500/10 border-2 border-cyan-400/50 text-cyan-400 flex items-center justify-center shadow-[0_0_25px_rgba(6,182,212,0.35)] active:scale-95 active:bg-cyan-500/30 transition-all animate-pulse"
+                  onClick={() => triggerBiometricAuth(true)}
+                  className="w-14 h-14 rounded-full bg-cyan-500/10 active:bg-cyan-500/25 border border-cyan-400/30 text-cyan-400 flex items-center justify-center shadow-lg shadow-cyan-500/20 active:scale-95 transition-all touch-manipulation"
+                  title="Touch sensor to unlock"
                 >
-                  <Fingerprint className="w-10 h-10" />
+                  <Fingerprint className="w-8 h-8 animate-pulse" />
                 </button>
+                <span className="text-[10px] text-gray-400 mt-1">Touch sensor to unlock</span>
               </div>
             )}
           </div>
@@ -590,7 +617,7 @@ export default function AuthModal({ onLoginSuccess }) {
       </div>
 
       {/* Bottom Action Buttons */}
-      <div className="flex flex-col items-center gap-2 w-full max-w-sm pb-1">
+      <div className="flex flex-col items-center gap-2.5 w-full max-w-sm pb-1">
         {mode === 'login' ? (
           <>
             <button
