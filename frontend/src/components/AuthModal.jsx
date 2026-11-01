@@ -3,6 +3,14 @@ import { Sparkles, Grid3X3, KeyRound, User, PlusCircle, ArrowLeft, Delete, Check
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
+// Helpers for WebAuthn binary conversion
+function bufferToBase64(buffer) {
+  return btoa(String.fromCharCode(...new Uint8Array(buffer)));
+}
+function base64ToBuffer(base64) {
+  return Uint8Array.from(atob(base64), c => c.charCodeAt(0)).buffer;
+}
+
 export default function AuthModal({ onLoginSuccess }) {
   const [mode, setMode] = useState('login');
   const [createStep, setCreateStep] = useState(1);
@@ -19,7 +27,6 @@ export default function AuthModal({ onLoginSuccess }) {
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [loading, setLoading] = useState(false);
-  const [isBiometricSupported, setIsBiometricSupported] = useState(false);
 
   const containerRef = useRef(null);
   const [isDrawing, setIsDrawing] = useState(false);
@@ -31,27 +38,11 @@ export default function AuthModal({ onLoginSuccess }) {
     { id: 6, x: 20, y: 80 }, { id: 7, x: 50, y: 80 }, { id: 8, x: 80, y: 80 },
   ];
 
-  // 1. Check if device supports Fingerprint / Biometrics
-  useEffect(() => {
-    if (window.PublicKeyCredential && PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable) {
-      PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()
-        .then((available) => {
-          setIsBiometricSupported(available);
-          // If previously enrolled, auto-trigger fingerprint scan on open
-          if (available && localStorage.getItem('smartspends_biometric_enabled') === 'true' && mode === 'login') {
-            setTimeout(() => triggerBiometricAuth(), 400);
-          }
-        })
-        .catch(() => setIsBiometricSupported(false));
-    }
-  }, [mode]);
-
-  // Pre-wake backend in background on mount
   useEffect(() => {
     fetch(`${API_URL}/api/ping`).catch(() => {});
   }, []);
 
-  // ------------------ BIOMETRIC / FINGERPRINT LOGIC ------------------
+  // ------------------ BULLETPROOF FINGERPRINT LOGIC ------------------
   const triggerBiometricAuth = async () => {
     setError('');
     const cleanUsername = username.trim().toLowerCase();
@@ -59,48 +50,76 @@ export default function AuthModal({ onLoginSuccess }) {
     const cachedUser = savedUserStr ? JSON.parse(savedUserStr) : { id: 'sreekar', username: 'Sreekar' };
     const cachedToken = localStorage.getItem('token') || 'token_sreekar';
 
-    const hasEnrolled = localStorage.getItem('smartspends_biometric_enabled') === 'true';
+    if (!window.PublicKeyCredential) {
+      setError('Biometrics not supported on this browser.');
+      return;
+    }
 
     try {
-      if (!hasEnrolled) {
-        // First-time fingerprint setup registration
+      const savedCredId = localStorage.getItem(`smartspends_bio_${cleanUsername}`);
+
+      if (!savedCredId) {
+        // STEP A: First-time fingerprint registration on this phone
+        setSuccessMsg('Touch fingerprint sensor to register...');
+
         const challenge = new Uint8Array(32);
         window.crypto.getRandomValues(challenge);
 
         const createOptions = {
           publicKey: {
             challenge,
-            rp: { name: 'SmartSpends' },
+            rp: {
+              name: 'SmartSpends',
+              id: window.location.hostname
+            },
             user: {
               id: Uint8Array.from(cleanUsername, c => c.charCodeAt(0)),
               name: cleanUsername,
               displayName: cleanUsername,
             },
-            pubKeyCredParams: [{ alg: -7, type: 'public-key' }, { alg: -257, type: 'public-key' }],
+            pubKeyCredParams: [
+              { type: 'public-key', alg: -7 },  // ES256
+              { type: 'public-key', alg: -257 } // RS256
+            ],
             authenticatorSelection: {
               authenticatorAttachment: 'platform',
-              userVerification: 'required',
+              userVerification: 'preferred',
+              residentKey: 'preferred'
             },
             timeout: 60000,
+            attestation: 'none'
           },
         };
 
         const credential = await navigator.credentials.create(createOptions);
         if (credential) {
-          localStorage.setItem('smartspends_biometric_enabled', 'true');
-          setSuccessMsg('Fingerprint Enrolled & Unlocked!');
-          setTimeout(() => onLoginSuccess(cachedUser, cachedToken), 400);
+          const credIdBase64 = bufferToBase64(credential.rawId);
+          localStorage.setItem(`smartspends_bio_${cleanUsername}`, credIdBase64);
+          setSuccessMsg('Fingerprint Saved & Unlocked!');
+          setTimeout(() => onLoginSuccess(cachedUser, cachedToken), 350);
         }
       } else {
-        // Scan fingerprint to unlock
+        // STEP B: Fingerprint scan to unlock
+        setSuccessMsg('Touch fingerprint sensor to unlock...');
+
         const challenge = new Uint8Array(32);
         window.crypto.getRandomValues(challenge);
+
+        const credBuffer = base64ToBuffer(savedCredId);
 
         const getOptions = {
           publicKey: {
             challenge,
-            userVerification: 'required',
+            rpId: window.location.hostname,
+            userVerification: 'preferred',
             timeout: 60000,
+            allowCredentials: [
+              {
+                type: 'public-key',
+                id: credBuffer,
+                transports: ['internal']
+              }
+            ]
           },
         };
 
@@ -111,8 +130,13 @@ export default function AuthModal({ onLoginSuccess }) {
         }
       }
     } catch (err) {
-      if (err.name !== 'NotAllowedError') {
-        setError('Fingerprint scan cancelled or failed.');
+      setSuccessMsg('');
+      if (err.name === 'NotAllowedError') {
+        setError('Fingerprint cancelled. Use PIN below.');
+      } else {
+        // If registration had an issue, reset key so next tap re-registers
+        localStorage.removeItem(`smartspends_bio_${cleanUsername}`);
+        setError('Please touch sensor again to set up fingerprint.');
       }
     }
   };
@@ -435,7 +459,7 @@ export default function AuthModal({ onLoginSuccess }) {
           </div>
         )}
 
-        {/* 6-DIGIT PASSCODE KEYPAD WITH FINGERPRINT BUTTON IN CORNER */}
+        {/* 6-DIGIT PASSCODE KEYPAD WITH FINGERPRINT */}
         {authType === 'pin' && (mode === 'login' || (mode === 'create' && createStep > 1)) && (
           <div className="flex flex-col items-center">
             {/* 6 Dots */}
@@ -467,13 +491,13 @@ export default function AuthModal({ onLoginSuccess }) {
                 </button>
               ))}
 
-              {/* FINGERPRINT BUTTON IN BOTTOM-LEFT CORNER */}
+              {/* FINGERPRINT BUTTON (BOTTOM-LEFT) */}
               {mode === 'login' ? (
                 <button
                   type="button"
                   onClick={triggerBiometricAuth}
                   style={{ width: '78px', height: '78px', minWidth: '78px', minHeight: '78px' }}
-                  className="rounded-full bg-cyan-500/15 active:bg-cyan-500/30 border border-cyan-500/30 text-cyan-300 flex items-center justify-center shadow-lg transition-colors flex-shrink-0"
+                  className="rounded-full bg-cyan-500/15 active:bg-cyan-500/30 border border-cyan-500/30 text-cyan-300 flex items-center justify-center shadow-lg transition-colors flex-shrink-0 active:scale-95"
                   title="Unlock with Fingerprint"
                 >
                   <Fingerprint className="w-9 h-9" />
