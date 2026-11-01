@@ -30,46 +30,32 @@ export default function AuthModal({ onLoginSuccess }) {
     { id: 6, x: 20, y: 80 }, { id: 7, x: 50, y: 80 }, { id: 8, x: 80, y: 80 },
   ];
 
-  useEffect(() => {
-    fetch(`${API_URL}/api/ping`).catch(() => {});
-  }, []);
-
-  // ------------------ BULLETPROOF FINGERPRINT CREATION & LOGIN ------------------
-  const triggerBiometricAuth = async () => {
+  // ------------------ FINGERPRINT SCANNER LOGIC ------------------
+  const triggerBiometricAuth = useCallback(async () => {
     setError('');
-    setSuccessMsg('');
     const cleanUsername = username.trim().toLowerCase();
     const savedUserStr = localStorage.getItem('user');
     const cachedUser = savedUserStr ? JSON.parse(savedUserStr) : { id: 'sreekar', username: 'Sreekar' };
     const cachedToken = localStorage.getItem('token') || 'token_sreekar';
 
-    if (!window.PublicKeyCredential) {
-      setError('Fingerprint not supported on this browser.');
-      return;
-    }
+    if (!window.PublicKeyCredential) return;
 
     const savedCredId = localStorage.getItem(`smartspends_passkey_${cleanUsername}`);
 
-    // Helper 1: Registers/Saves fingerprint on phone
     const createPasskey = async () => {
-      setSuccessMsg('Touch sensor to register fingerprint...');
       const challenge = crypto.getRandomValues(new Uint8Array(32));
-
       const createOptions = {
         publicKey: {
           challenge,
-          rp: {
-            name: 'SmartSpends',
-            id: window.location.hostname
-          },
+          rp: { name: 'SmartSpends', id: window.location.hostname },
           user: {
             id: Uint8Array.from(cleanUsername, c => c.charCodeAt(0)),
             name: `${cleanUsername}@smartspends`,
             displayName: cleanUsername.toUpperCase()
           },
           pubKeyCredParams: [
-            { type: 'public-key', alg: -7 },  // ES256
-            { type: 'public-key', alg: -257 } // RS256
+            { type: 'public-key', alg: -7 },
+            { type: 'public-key', alg: -257 }
           ],
           authenticatorSelection: {
             authenticatorAttachment: 'platform',
@@ -85,14 +71,12 @@ export default function AuthModal({ onLoginSuccess }) {
       if (cred) {
         const b64 = btoa(String.fromCharCode(...new Uint8Array(cred.rawId)));
         localStorage.setItem(`smartspends_passkey_${cleanUsername}`, b64);
-        setSuccessMsg('Fingerprint Saved & Unlocked!');
-        setTimeout(() => onLoginSuccess(cachedUser, cachedToken), 400);
+        setSuccessMsg('Fingerprint Verified!');
+        onLoginSuccess(cachedUser, cachedToken);
       }
     };
 
-    // Helper 2: Scans saved fingerprint to unlock
     const verifyPasskey = async (b64Id) => {
-      setSuccessMsg('Touch fingerprint sensor to unlock...');
       const challenge = crypto.getRandomValues(new Uint8Array(32));
       const binary = Uint8Array.from(atob(b64Id), c => c.charCodeAt(0)).buffer;
 
@@ -119,27 +103,30 @@ export default function AuthModal({ onLoginSuccess }) {
 
     try {
       if (!savedCredId) {
-        // No passkey on phone yet -> Prompt Android to create & save it!
         await createPasskey();
       } else {
-        // Try to scan
         try {
           await verifyPasskey(savedCredId);
-        } catch (getErr) {
-          // If phone lost the key -> auto recreate without getting stuck!
+        } catch {
           localStorage.removeItem(`smartspends_passkey_${cleanUsername}`);
           await createPasskey();
         }
       }
-    } catch (err) {
-      setSuccessMsg('');
-      if (err.name === 'NotAllowedError') {
-        setError('Fingerprint cancelled. Use PIN below.');
-      } else {
-        setError('Fingerprint setup error. Please use PIN.');
-      }
+    } catch {
+      // Silently allow user to type PIN or touch sensor again
     }
-  };
+  }, [username, onLoginSuccess]);
+
+  // Auto-launch fingerprint scanner immediately when the app opens!
+  useEffect(() => {
+    fetch(`${API_URL}/api/ping`).catch(() => {});
+    if (mode === 'login') {
+      const timer = setTimeout(() => {
+        triggerBiometricAuth();
+      }, 250);
+      return () => clearTimeout(timer);
+    }
+  }, [mode, triggerBiometricAuth]);
 
   // ------------------ PIN LOGIC ------------------
   const handlePinDigit = useCallback((digit) => {
@@ -354,18 +341,18 @@ export default function AuthModal({ onLoginSuccess }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 w-full h-full bg-[#080B11] text-gray-100 flex flex-col justify-between items-center py-6 px-4 select-none overflow-hidden touch-manipulation">
+    <div className="fixed inset-0 z-50 w-full h-full bg-[#080B11] text-gray-100 flex flex-col justify-between items-center py-4 px-4 select-none overflow-hidden touch-manipulation">
       {/* Top Header */}
-      <div className="flex flex-col items-center w-full max-w-sm pt-2">
-        <div className="p-3 bg-gradient-to-tr from-purple-500 to-cyan-500 rounded-2xl shadow-lg mb-2">
-          <Sparkles className="w-6 h-6 text-white" />
+      <div className="flex flex-col items-center w-full max-w-sm pt-1">
+        <div className="p-2.5 bg-gradient-to-tr from-purple-500 to-cyan-500 rounded-2xl shadow-lg mb-1.5">
+          <Sparkles className="w-5 h-5 text-white" />
         </div>
 
-        <h1 className="text-2xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-purple-400 via-pink-400 to-cyan-400">
+        <h1 className="text-xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-purple-400 via-pink-400 to-cyan-400">
           SmartSpends
         </h1>
 
-        <h2 className="text-xs font-bold tracking-widest text-gray-300 mt-2 uppercase text-center">
+        <h2 className="text-[11px] font-bold tracking-widest text-gray-300 mt-1 uppercase text-center">
           {mode === 'create'
             ? createStep === 1
               ? 'CREATE ACCOUNT'
@@ -376,7 +363,7 @@ export default function AuthModal({ onLoginSuccess }) {
         </h2>
 
         {mode === 'login' && (
-          <div className="flex items-center gap-1.5 mt-2 bg-white/[0.06] px-3.5 py-1 rounded-full border border-white/10 text-xs">
+          <div className="flex items-center gap-1.5 mt-1.5 bg-white/[0.06] px-3 py-0.5 rounded-full border border-white/10 text-xs">
             {isChangingUser ? (
               <input
                 type="text"
@@ -389,12 +376,12 @@ export default function AuthModal({ onLoginSuccess }) {
               />
             ) : (
               <>
-                <span className="text-gray-400 flex items-center gap-1"><UserCheck className="w-3.5 h-3.5 text-cyan-400" /> User:</span>
+                <span className="text-gray-400 flex items-center gap-1"><UserCheck className="w-3 h-3 text-cyan-400" /> User:</span>
                 <span className="text-cyan-300 font-bold uppercase">{username}</span>
                 <button
                   type="button"
                   onClick={() => setIsChangingUser(true)}
-                  className="text-[11px] text-gray-400 hover:text-white underline ml-1"
+                  className="text-[10px] text-gray-400 hover:text-white underline ml-1"
                 >
                   (switch)
                 </button>
@@ -403,14 +390,14 @@ export default function AuthModal({ onLoginSuccess }) {
           </div>
         )}
 
-        <div className="h-6 mt-1 text-center flex items-center justify-center">
+        <div className="h-5 mt-1 text-center flex items-center justify-center">
           {error && <span className="text-xs text-red-400 font-semibold">{error}</span>}
           {successMsg && <span className="text-xs text-cyan-400 font-semibold flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5 text-cyan-400" /> {successMsg}</span>}
           {loading && <span className="text-xs text-purple-400 font-semibold">Connecting...</span>}
         </div>
       </div>
 
-      {/* Middle Section: Large Keypad + Fingerprint */}
+      {/* Middle Section: Keypad + In-Display Fingerprint Directly Under 0 */}
       <div className="flex flex-col items-center justify-center w-full max-w-sm flex-1 my-auto">
         {mode === 'create' && createStep === 1 && (
           <div className="w-full space-y-5 px-2">
@@ -459,15 +446,15 @@ export default function AuthModal({ onLoginSuccess }) {
           </div>
         )}
 
-        {/* 6-DIGIT PASSCODE KEYPAD WITH FINGERPRINT */}
+        {/* 6-DIGIT PASSCODE KEYPAD */}
         {authType === 'pin' && (mode === 'login' || (mode === 'create' && createStep > 1)) && (
           <div className="flex flex-col items-center">
             {/* 6 Dots */}
-            <div className="flex gap-4 mb-7">
+            <div className="flex gap-4 mb-5">
               {[0, 1, 2, 3, 4, 5].map((idx) => (
                 <div
                   key={idx}
-                  style={{ width: '16px', height: '16px' }}
+                  style={{ width: '14px', height: '14px' }}
                   className={`rounded-full border transition-colors duration-100 ${
                     pin.length > idx
                       ? 'bg-cyan-400 border-cyan-300 shadow-md shadow-cyan-400/50'
@@ -478,39 +465,27 @@ export default function AuthModal({ onLoginSuccess }) {
             </div>
 
             {/* Circular Keypad Grid */}
-            <div className="grid grid-cols-3 gap-x-6 gap-y-4">
+            <div className="grid grid-cols-3 gap-x-6 gap-y-3">
               {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => (
                 <button
                   key={num}
                   type="button"
                   onClick={() => handlePinDigit(num.toString())}
-                  style={{ width: '78px', height: '78px', minWidth: '78px', minHeight: '78px', fontSize: '32px' }}
+                  style={{ width: '74px', height: '74px', minWidth: '74px', minHeight: '74px', fontSize: '30px' }}
                   className="rounded-full bg-white/[0.08] active:bg-white/25 border border-white/10 font-medium text-white flex items-center justify-center shadow-lg transition-colors flex-shrink-0"
                 >
                   {num}
                 </button>
               ))}
 
-              {/* FINGERPRINT BUTTON (BOTTOM-LEFT) */}
-              {mode === 'login' ? (
-                <button
-                  type="button"
-                  onClick={triggerBiometricAuth}
-                  style={{ width: '78px', height: '78px', minWidth: '78px', minHeight: '78px' }}
-                  className="rounded-full bg-cyan-500/15 active:bg-cyan-500/30 border border-cyan-500/30 text-cyan-300 flex items-center justify-center shadow-lg transition-colors flex-shrink-0 active:scale-95"
-                  title="Unlock with Fingerprint"
-                >
-                  <Fingerprint className="w-9 h-9" />
-                </button>
-              ) : (
-                <div style={{ width: '78px', height: '78px' }} />
-              )}
+              {/* Empty Left Slot */}
+              <div style={{ width: '74px', height: '74px' }} />
 
               {/* Zero */}
               <button
                 type="button"
                 onClick={() => handlePinDigit('0')}
-                style={{ width: '78px', height: '78px', minWidth: '78px', minHeight: '78px', fontSize: '32px' }}
+                style={{ width: '74px', height: '74px', minWidth: '74px', minHeight: '74px', fontSize: '30px' }}
                 className="rounded-full bg-white/[0.08] active:bg-white/25 border border-white/10 font-medium text-white flex items-center justify-center shadow-lg transition-colors flex-shrink-0"
               >
                 0
@@ -520,12 +495,27 @@ export default function AuthModal({ onLoginSuccess }) {
               <button
                 type="button"
                 onClick={handlePinBackspace}
-                style={{ width: '78px', height: '78px', minWidth: '78px', minHeight: '78px' }}
+                style={{ width: '74px', height: '74px', minWidth: '74px', minHeight: '74px' }}
                 className="rounded-full bg-transparent active:bg-red-500/20 text-gray-400 active:text-red-400 flex items-center justify-center transition-colors flex-shrink-0"
               >
-                <Delete className="w-8 h-8" />
+                <Delete className="w-7 h-7" />
               </button>
             </div>
+
+            {/* IN-DISPLAY FINGERPRINT SENSOR DIRECTLY UNDER '0' */}
+            {mode === 'login' && (
+              <div className="mt-5 flex flex-col items-center">
+                <button
+                  type="button"
+                  onTouchStart={triggerBiometricAuth}
+                  onClick={triggerBiometricAuth}
+                  style={{ width: '68px', height: '68px' }}
+                  className="rounded-full bg-cyan-500/10 border-2 border-cyan-400/50 text-cyan-400 flex items-center justify-center shadow-[0_0_25px_rgba(6,182,212,0.35)] active:scale-95 active:bg-cyan-500/30 transition-all animate-pulse"
+                >
+                  <Fingerprint className="w-10 h-10" />
+                </button>
+              </div>
+            )}
           </div>
         )}
 
@@ -600,7 +590,7 @@ export default function AuthModal({ onLoginSuccess }) {
       </div>
 
       {/* Bottom Action Buttons */}
-      <div className="flex flex-col items-center gap-3 w-full max-w-sm pb-2">
+      <div className="flex flex-col items-center gap-2 w-full max-w-sm pb-1">
         {mode === 'login' ? (
           <>
             <button
@@ -609,7 +599,7 @@ export default function AuthModal({ onLoginSuccess }) {
                 setMode('create');
                 resetPins();
               }}
-              className="w-full py-3.5 px-4 bg-purple-500/20 active:bg-purple-500/35 border border-purple-500/30 rounded-2xl text-white font-bold text-xs flex items-center justify-center gap-2 shadow"
+              className="w-full py-3 px-4 bg-purple-500/20 active:bg-purple-500/35 border border-purple-500/30 rounded-2xl text-white font-bold text-xs flex items-center justify-center gap-2 shadow"
             >
               <PlusCircle className="w-4 h-4 text-cyan-400" /> Create New Account
             </button>
@@ -620,7 +610,7 @@ export default function AuthModal({ onLoginSuccess }) {
                 setAuthType(authType === 'pin' ? 'pattern' : 'pin');
                 resetPins();
               }}
-              className="text-cyan-400 active:text-cyan-300 text-xs py-1.5 flex items-center gap-1.5 font-medium"
+              className="text-cyan-400 active:text-cyan-300 text-xs py-1 flex items-center gap-1.5 font-medium"
             >
               {authType === 'pin' ? (
                 <>
