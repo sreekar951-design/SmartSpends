@@ -3,14 +3,6 @@ import { Sparkles, Grid3X3, KeyRound, User, PlusCircle, ArrowLeft, Delete, Check
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
-// Helpers for WebAuthn binary conversion
-function bufferToBase64(buffer) {
-  return btoa(String.fromCharCode(...new Uint8Array(buffer)));
-}
-function base64ToBuffer(base64) {
-  return Uint8Array.from(atob(base64), c => c.charCodeAt(0)).buffer;
-}
-
 export default function AuthModal({ onLoginSuccess }) {
   const [mode, setMode] = useState('login');
   const [createStep, setCreateStep] = useState(1);
@@ -42,91 +34,101 @@ export default function AuthModal({ onLoginSuccess }) {
     fetch(`${API_URL}/api/ping`).catch(() => {});
   }, []);
 
-  // ------------------ BULLETPROOF FINGERPRINT LOGIC ------------------
+  // ------------------ BULLETPROOF FINGERPRINT CREATION & LOGIN ------------------
   const triggerBiometricAuth = async () => {
     setError('');
+    setSuccessMsg('');
     const cleanUsername = username.trim().toLowerCase();
     const savedUserStr = localStorage.getItem('user');
     const cachedUser = savedUserStr ? JSON.parse(savedUserStr) : { id: 'sreekar', username: 'Sreekar' };
     const cachedToken = localStorage.getItem('token') || 'token_sreekar';
 
     if (!window.PublicKeyCredential) {
-      setError('Biometrics not supported on this browser.');
+      setError('Fingerprint not supported on this browser.');
       return;
     }
 
-    try {
-      const savedCredId = localStorage.getItem(`smartspends_bio_${cleanUsername}`);
+    const savedCredId = localStorage.getItem(`smartspends_passkey_${cleanUsername}`);
 
-      if (!savedCredId) {
-        // STEP A: First-time fingerprint registration on this phone
-        setSuccessMsg('Touch fingerprint sensor to register...');
+    // Helper 1: Registers/Saves fingerprint on phone
+    const createPasskey = async () => {
+      setSuccessMsg('Touch sensor to register fingerprint...');
+      const challenge = crypto.getRandomValues(new Uint8Array(32));
 
-        const challenge = new Uint8Array(32);
-        window.crypto.getRandomValues(challenge);
-
-        const createOptions = {
-          publicKey: {
-            challenge,
-            rp: {
-              name: 'SmartSpends',
-              id: window.location.hostname
-            },
-            user: {
-              id: Uint8Array.from(cleanUsername, c => c.charCodeAt(0)),
-              name: cleanUsername,
-              displayName: cleanUsername,
-            },
-            pubKeyCredParams: [
-              { type: 'public-key', alg: -7 },  // ES256
-              { type: 'public-key', alg: -257 } // RS256
-            ],
-            authenticatorSelection: {
-              authenticatorAttachment: 'platform',
-              userVerification: 'preferred',
-              residentKey: 'preferred'
-            },
-            timeout: 60000,
-            attestation: 'none'
+      const createOptions = {
+        publicKey: {
+          challenge,
+          rp: {
+            name: 'SmartSpends',
+            id: window.location.hostname
           },
-        };
-
-        const credential = await navigator.credentials.create(createOptions);
-        if (credential) {
-          const credIdBase64 = bufferToBase64(credential.rawId);
-          localStorage.setItem(`smartspends_bio_${cleanUsername}`, credIdBase64);
-          setSuccessMsg('Fingerprint Saved & Unlocked!');
-          setTimeout(() => onLoginSuccess(cachedUser, cachedToken), 350);
+          user: {
+            id: Uint8Array.from(cleanUsername, c => c.charCodeAt(0)),
+            name: `${cleanUsername}@smartspends`,
+            displayName: cleanUsername.toUpperCase()
+          },
+          pubKeyCredParams: [
+            { type: 'public-key', alg: -7 },  // ES256
+            { type: 'public-key', alg: -257 } // RS256
+          ],
+          authenticatorSelection: {
+            authenticatorAttachment: 'platform',
+            userVerification: 'required',
+            residentKey: 'required'
+          },
+          timeout: 60000,
+          attestation: 'none'
         }
+      };
+
+      const cred = await navigator.credentials.create(createOptions);
+      if (cred) {
+        const b64 = btoa(String.fromCharCode(...new Uint8Array(cred.rawId)));
+        localStorage.setItem(`smartspends_passkey_${cleanUsername}`, b64);
+        setSuccessMsg('Fingerprint Saved & Unlocked!');
+        setTimeout(() => onLoginSuccess(cachedUser, cachedToken), 400);
+      }
+    };
+
+    // Helper 2: Scans saved fingerprint to unlock
+    const verifyPasskey = async (b64Id) => {
+      setSuccessMsg('Touch fingerprint sensor to unlock...');
+      const challenge = crypto.getRandomValues(new Uint8Array(32));
+      const binary = Uint8Array.from(atob(b64Id), c => c.charCodeAt(0)).buffer;
+
+      const getOptions = {
+        publicKey: {
+          challenge,
+          rpId: window.location.hostname,
+          userVerification: 'required',
+          timeout: 60000,
+          allowCredentials: [{
+            type: 'public-key',
+            id: binary,
+            transports: ['internal']
+          }]
+        }
+      };
+
+      const assertion = await navigator.credentials.get(getOptions);
+      if (assertion) {
+        setSuccessMsg('Fingerprint Verified!');
+        onLoginSuccess(cachedUser, cachedToken);
+      }
+    };
+
+    try {
+      if (!savedCredId) {
+        // No passkey on phone yet -> Prompt Android to create & save it!
+        await createPasskey();
       } else {
-        // STEP B: Fingerprint scan to unlock
-        setSuccessMsg('Touch fingerprint sensor to unlock...');
-
-        const challenge = new Uint8Array(32);
-        window.crypto.getRandomValues(challenge);
-
-        const credBuffer = base64ToBuffer(savedCredId);
-
-        const getOptions = {
-          publicKey: {
-            challenge,
-            rpId: window.location.hostname,
-            userVerification: 'preferred',
-            timeout: 60000,
-            allowCredentials: [
-              {
-                type: 'public-key',
-                id: credBuffer,
-                transports: ['internal']
-              }
-            ]
-          },
-        };
-
-        const assertion = await navigator.credentials.get(getOptions);
-        if (assertion) {
-          setSuccessMsg('Fingerprint Verified!');
-          onLoginSuccess(cachedUser, cachedToken);
+        // Try to scan
+        try {
+          await verifyPasskey(savedCredId);
+        } catch (getErr) {
+          // If phone lost the key -> auto recreate without getting stuck!
+          localStorage.removeItem(`smartspends_passkey_${cleanUsername}`);
+          await createPasskey();
         }
       }
     } catch (err) {
@@ -134,9 +136,7 @@ export default function AuthModal({ onLoginSuccess }) {
       if (err.name === 'NotAllowedError') {
         setError('Fingerprint cancelled. Use PIN below.');
       } else {
-        // If registration had an issue, reset key so next tap re-registers
-        localStorage.removeItem(`smartspends_bio_${cleanUsername}`);
-        setError('Please touch sensor again to set up fingerprint.');
+        setError('Fingerprint setup error. Please use PIN.');
       }
     }
   };
