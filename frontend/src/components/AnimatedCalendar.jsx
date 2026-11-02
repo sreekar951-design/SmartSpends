@@ -10,7 +10,6 @@ export default function AnimatedCalendar({
 }) {
   const [direction, setDirection] = useState(0);
 
-  // Safe Date parsing
   const safeDate = viewDate instanceof Date && !isNaN(viewDate) ? viewDate : new Date();
   const year = safeDate.getFullYear();
   const month = safeDate.getMonth();
@@ -18,14 +17,12 @@ export default function AnimatedCalendar({
   const firstDayIndex = new Date(year, month, 1).getDay();
   const totalDays = new Date(year, month + 1, 0).getDate();
 
-  // Slide to previous month (Swipe Right)
   const handlePrev = () => {
     setDirection(-1);
     onViewDateChange(new Date(year, month - 1, 1));
     onSelectDate(null);
   };
 
-  // Slide to next month (Swipe Left)
   const handleNext = () => {
     setDirection(1);
     onViewDateChange(new Date(year, month + 1, 1));
@@ -34,7 +31,6 @@ export default function AnimatedCalendar({
 
   const monthName = safeDate.toLocaleString('default', { month: 'long' });
 
-  // Map expenses to days
   const getDaySpending = (dayNum) => {
     const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
     const safeExpenses = Array.isArray(expenses) ? expenses : [];
@@ -45,7 +41,6 @@ export default function AnimatedCalendar({
 
   const daysOfWeek = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-  // Native Touch & Mouse Swipe Handlers (100% Crash-Proof)
   const [touchStart, setTouchStart] = useState(null);
   const [touchEnd, setTouchEnd] = useState(null);
 
@@ -64,9 +59,9 @@ export default function AnimatedCalendar({
     if (!touchStart || !touchEnd) return;
     const distance = touchStart - touchEnd;
     if (distance > minSwipeDistance) {
-      handleNext(); // Swiped Left -> Next Month
+      handleNext();
     } else if (distance < -minSwipeDistance) {
-      handlePrev(); // Swiped Right -> Previous Month
+      handlePrev();
     }
     setTouchStart(null);
     setTouchEnd(null);
@@ -74,11 +69,10 @@ export default function AnimatedCalendar({
 
   return (
     <div className="glass-panel p-6 rounded-3xl border border-white/10 shadow-2xl overflow-hidden select-none">
-      {/* Header (No arrow buttons) */}
+      {/* Clean Header */}
       <div className="flex items-center justify-between mb-4">
         <div>
           <h3 className="text-xl font-bold text-white tracking-wide">{monthName} {year}</h3>
-          <p className="text-[11px] text-gray-400 mt-0.5">👈 Swipe left or right to change months 👉</p>
         </div>
       </div>
 
@@ -108,12 +102,10 @@ export default function AnimatedCalendar({
             transition={{ duration: 0.2 }}
             className="grid grid-cols-7 gap-2"
           >
-            {/* Empty slots for start padding */}
             {Array.from({ length: firstDayIndex }).map((_, i) => (
               <div key={`empty-${i}`} className="h-20 rounded-2xl bg-white/[0.01] border border-transparent" />
             ))}
 
-            {/* Days Grid */}
             {Array.from({ length: totalDays }).map((_, i) => {
               const dayNum = i + 1;
               const { count, total, dateStr } = getDaySpending(dayNum);
