@@ -1,21 +1,20 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { TrendingUp, Calendar as CalIcon, LogOut } from 'lucide-react';
+import { CalendarRange, Calendar as CalIcon, LogOut } from 'lucide-react';
 
-export default function TopRightStats({ expenses, user, onLogout, viewDate }) {
-  const currentMonth = viewDate.getMonth();
-  const currentYear = viewDate.getFullYear();
+export default function TopRightStats({ expenses = [], user, onLogout, viewDate = new Date() }) {
+  const safeDate = viewDate instanceof Date && !isNaN(viewDate) ? viewDate : new Date();
+  const currentYear = safeDate.getFullYear();
 
-  // Computes total strictly for whatever month/year you are viewing on the calendar
-  const monthlyTotal = expenses.reduce((acc, curr) => {
+  // Computes total strictly for the currently viewed YEAR (January to December)
+  const yearlyTotal = (Array.isArray(expenses) ? expenses : []).reduce((acc, curr) => {
+    if (!curr || !curr.date) return acc;
     const d = new Date(curr.date);
-    if (d.getMonth() === currentMonth && d.getFullYear() === currentYear) {
-      return acc + curr.amount;
+    if (d.getFullYear() === currentYear) {
+      return acc + (Number(curr.amount) || 0);
     }
     return acc;
   }, 0);
-
-  const monthName = new Intl.DateTimeFormat('en-US', { month: 'long' }).format(viewDate);
 
   return (
     <motion.div
@@ -30,21 +29,21 @@ export default function TopRightStats({ expenses, user, onLogout, viewDate }) {
         </div>
         <div>
           <p className="text-xs text-gray-400">Welcome Back,</p>
-          <p className="font-semibold text-white tracking-wide">{user?.username}</p>
+          <p className="font-semibold text-white tracking-wide">{user?.username || 'Sreekar'}</p>
         </div>
       </div>
 
-      {/* Dynamic Month Spend Tag */}
+      {/* 🗓️ YEARLY SPEND CARD (NOW IN TOP-RIGHT) */}
       <div className="flex items-center gap-3 bg-white/5 border border-white/10 px-4 py-2 rounded-xl">
-        <div className="p-2 bg-purple-500/20 rounded-lg text-purple-400">
-          <TrendingUp className="w-5 h-5" />
+        <div className="p-2 bg-cyan-500/20 rounded-lg text-cyan-400">
+          <CalendarRange className="w-5 h-5" />
         </div>
         <div>
           <p className="text-xs text-gray-400 flex items-center gap-1">
-            <CalIcon className="w-3 h-3" /> {monthName} Total
+            <CalIcon className="w-3 h-3" /> {currentYear} Total
           </p>
-          <p className="text-xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-cyan-300">
-            ₹{Math.round(monthlyTotal).toLocaleString('en-IN')}
+          <p className="text-xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-purple-300">
+            ₹{Math.round(yearlyTotal).toLocaleString('en-IN')}
           </p>
         </div>
       </div>
