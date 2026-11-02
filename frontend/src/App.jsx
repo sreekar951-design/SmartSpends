@@ -14,16 +14,24 @@ import SearchView from './components/SearchView';
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState('dashboard'); // 'dashboard' | 'analytics' | 'budget' | 'search'
+  const [activeTab, setActiveTab] = useState('dashboard');
   const [token, setToken] = useState('');
   const [user, setUser] = useState(null);
 
-  const [expenses, setExpenses] = useState([]);
+  // ⚡ CACHED DATA INITIALIZATION: Never opens with an empty array!
+  const [expenses, setExpenses] = useState(() => {
+    try {
+      const cached = localStorage.getItem('smartspends_expenses');
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
+
   const [selectedDate, setSelectedDate] = useState(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [viewDate, setViewDate] = useState(new Date());
 
-  // Auto-lock when minimized
   useEffect(() => {
     const handleAutoLock = () => {
       if (document.visibilityState === 'hidden') {
@@ -50,6 +58,7 @@ export default function App() {
       if (res.ok) {
         const data = await res.json();
         setExpenses(data);
+        localStorage.setItem('smartspends_expenses', JSON.stringify(data));
       }
     } catch (err) {
       console.error('Failed to load expenses', err);
@@ -86,7 +95,9 @@ export default function App() {
       });
       if (res.ok) {
         const saved = await res.json();
-        setExpenses([saved, ...expenses]);
+        const updated = [saved, ...expenses];
+        setExpenses(updated);
+        localStorage.setItem('smartspends_expenses', JSON.stringify(updated));
       }
     } catch (err) {
       console.error(err);
@@ -100,14 +111,15 @@ export default function App() {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (res.ok) {
-        setExpenses(expenses.filter((e) => e.id !== id));
+        const updated = expenses.filter((e) => e.id !== id);
+        setExpenses(updated);
+        localStorage.setItem('smartspends_expenses', JSON.stringify(updated));
       }
     } catch (err) {
       console.error(err);
     }
   };
 
-  // Monthly Total for current viewDate
   const safeDate = viewDate instanceof Date && !isNaN(viewDate) ? viewDate : new Date();
   const currentMonth = safeDate.getMonth();
   const currentYear = safeDate.getFullYear();
@@ -151,7 +163,7 @@ export default function App() {
           {/* PAGE NAVIGATION TABS */}
           <Navbar activeTab={activeTab} setActiveTab={setActiveTab} />
 
-          {/* Action Row: Monthly Card + Add Spending Button */}
+          {/* Action Row */}
           <div className="flex flex-wrap items-center justify-between sm:justify-end gap-3">
             <div className="flex items-center gap-3 bg-white/5 border border-white/10 px-4 py-2 rounded-xl shadow-lg">
               <div className="p-2 bg-purple-500/20 rounded-lg text-purple-400">
@@ -177,7 +189,7 @@ export default function App() {
             </motion.button>
           </div>
 
-          {/* ================= PAGE SWITCHER ================= */}
+          {/* PAGE SWITCHER */}
           {activeTab === 'dashboard' && (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
               <div className="lg:col-span-7">
@@ -224,7 +236,6 @@ export default function App() {
             />
           )}
 
-          {/* Add Expense Popup */}
           <ExpenseForm
             isOpen={isFormOpen}
             onClose={() => setIsFormOpen(false)}

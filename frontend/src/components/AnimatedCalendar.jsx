@@ -31,7 +31,7 @@ export default function AnimatedCalendar({
 
   const monthName = safeDate.toLocaleString('default', { month: 'long' });
 
-  // Map expenses to days
+  // Safe map expenses to days
   const getDaySpending = (dayNum) => {
     const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
     const safeExpenses = Array.isArray(expenses) ? expenses : [];
@@ -73,7 +73,7 @@ export default function AnimatedCalendar({
 
   return (
     <div className="glass-panel p-6 rounded-3xl border border-white/10 shadow-2xl overflow-hidden select-none">
-      {/* Clean Header (Counter text removed) */}
+      {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div>
           <h3 className="text-xl font-bold text-white tracking-wide">{monthName} {year}</h3>
@@ -106,32 +106,34 @@ export default function AnimatedCalendar({
             transition={{ duration: 0.2 }}
             className="grid grid-cols-7 gap-2"
           >
+            {/* Empty slots for start padding */}
             {Array.from({ length: firstDayIndex }).map((_, i) => (
               <div key={`empty-${i}`} className="h-20 rounded-2xl bg-white/[0.01] border border-transparent" />
             ))}
 
+            {/* Days Grid (Glitch-Free & Lightweight) */}
             {Array.from({ length: totalDays }).map((_, i) => {
               const dayNum = i + 1;
               const { count, total, dateStr } = getDaySpending(dayNum);
               const isSelected = selectedDate === dateStr;
 
-              // Check if day has elapsed with ₹0 spendings
+              // Only show star if day has actually passed AND expenses data has loaded
               const dayDate = new Date(year, month, dayNum, 0, 0, 0);
               const isPastOrToday = dayDate <= todayEnd;
-              const isNoSpendDay = isPastOrToday && count === 0;
+              const isNoSpendDay = isPastOrToday && count === 0 && expenses.length > 0;
 
               return (
                 <div
                   key={dayNum}
                   onClick={() => onSelectDate(selectedDate === dateStr ? null : dateStr)}
-                  className={`h-20 p-2 rounded-2xl border flex flex-col justify-between cursor-pointer transition-all duration-150 relative overflow-hidden active:scale-95 ${
+                  className={`h-20 p-2 rounded-2xl border flex flex-col justify-between cursor-pointer transition-colors duration-100 relative overflow-hidden active:scale-95 ${
                     isSelected
                       ? 'border-cyan-400 bg-cyan-500/20 shadow-lg shadow-cyan-500/20'
                       : count > 0
                       ? 'border-purple-500/40 bg-purple-500/10'
                       : isNoSpendDay
-                      ? 'border-amber-500/25 bg-amber-500/[0.04] hover:border-amber-500/40'
-                      : 'border-white/5 bg-white/[0.02] hover:border-white/20'
+                      ? 'border-amber-500/20 bg-amber-500/[0.02]'
+                      : 'border-white/5 bg-white/[0.02]'
                   }`}
                 >
                   <div className="flex justify-between items-center">
@@ -145,11 +147,11 @@ export default function AnimatedCalendar({
                       {dayNum}
                     </span>
 
-                    {/* Cyan pulse dot for spending days vs Golden Star for zero-spend days */}
+                    {/* Blue dot for spending day vs subtle clean Star for no-spend day */}
                     {count > 0 ? (
-                      <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
+                      <span className="w-2 h-2 rounded-full bg-cyan-400" />
                     ) : isNoSpendDay ? (
-                      <span className="text-[11px] text-amber-400 drop-shadow" title="No-Spend Day! ⭐">
+                      <span className="text-[11px] text-amber-400 select-none leading-none" title="No-Spend Day">
                         ⭐
                       </span>
                     ) : null}
@@ -161,12 +163,6 @@ export default function AnimatedCalendar({
                       <p className="text-xs font-bold text-pink-400 truncate">
                         ₹{total >= 1000 ? `${(total / 1000).toFixed(1)}k` : Math.round(total)}
                       </p>
-                    </div>
-                  ) : isNoSpendDay ? (
-                    <div className="text-right">
-                      <span className="text-[9px] font-semibold text-amber-400/90 bg-amber-500/15 px-1.5 py-0.5 rounded-md border border-amber-500/25">
-                        ₹0 Spent
-                      </span>
                     </div>
                   ) : null}
                 </div>
