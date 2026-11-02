@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Sparkles, Star } from 'lucide-react';
 
 export default function AnimatedCalendar({
   expenses = [],
@@ -41,20 +40,8 @@ export default function AnimatedCalendar({
     return { count: dayExpenses.length, total: sum, dateStr };
   };
 
-  // ⭐ CALCULATE NO-SPEND DAYS FOR ELAPSED DAYS IN THIS MONTH
   const now = new Date();
   const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
-
-  let noSpendDaysCount = 0;
-  for (let d = 1; d <= totalDays; d++) {
-    const dayDate = new Date(year, month, d, 0, 0, 0);
-    if (dayDate <= todayEnd) {
-      const { count } = getDaySpending(d);
-      if (count === 0) {
-        noSpendDaysCount++;
-      }
-    }
-  }
 
   const daysOfWeek = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -86,19 +73,11 @@ export default function AnimatedCalendar({
 
   return (
     <div className="glass-panel p-6 rounded-3xl border border-white/10 shadow-2xl overflow-hidden select-none">
-      {/* Header with Month Title and No-Spend Day Counter Badge */}
-      <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+      {/* Clean Header (Counter text removed) */}
+      <div className="flex items-center justify-between mb-4">
         <div>
           <h3 className="text-xl font-bold text-white tracking-wide">{monthName} {year}</h3>
         </div>
-
-        {/* ⭐ Glowing No-Spend Counter Badge */}
-        {noSpendDaysCount > 0 && (
-          <div className="flex items-center gap-1.5 px-3 py-1 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-semibold shadow-sm shadow-amber-500/10">
-            <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-            <span><b>{noSpendDaysCount}</b> No-Spend Days this month • Great discipline!</span>
-          </div>
-        )}
       </div>
 
       {/* Days of week */}
@@ -136,7 +115,7 @@ export default function AnimatedCalendar({
               const { count, total, dateStr } = getDaySpending(dayNum);
               const isSelected = selectedDate === dateStr;
 
-              // Check if day has passed or is today with zero spendings
+              // Check if day has elapsed with ₹0 spendings
               const dayDate = new Date(year, month, dayNum, 0, 0, 0);
               const isPastOrToday = dayDate <= todayEnd;
               const isNoSpendDay = isPastOrToday && count === 0;
@@ -166,7 +145,7 @@ export default function AnimatedCalendar({
                       {dayNum}
                     </span>
 
-                    {/* Blue dot for spending day vs Golden Star for zero-spend day */}
+                    {/* Cyan pulse dot for spending days vs Golden Star for zero-spend days */}
                     {count > 0 ? (
                       <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
                     ) : isNoSpendDay ? (
