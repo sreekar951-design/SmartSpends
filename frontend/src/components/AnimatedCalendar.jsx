@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { Sparkles, Star } from 'lucide-react';
 
 export default function AnimatedCalendar({
   expenses = [],
@@ -31,6 +32,7 @@ export default function AnimatedCalendar({
 
   const monthName = safeDate.toLocaleString('default', { month: 'long' });
 
+  // Map expenses to days
   const getDaySpending = (dayNum) => {
     const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
     const safeExpenses = Array.isArray(expenses) ? expenses : [];
@@ -39,11 +41,26 @@ export default function AnimatedCalendar({
     return { count: dayExpenses.length, total: sum, dateStr };
   };
 
+  // ⭐ CALCULATE NO-SPEND DAYS FOR ELAPSED DAYS IN THIS MONTH
+  const now = new Date();
+  const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+
+  let noSpendDaysCount = 0;
+  for (let d = 1; d <= totalDays; d++) {
+    const dayDate = new Date(year, month, d, 0, 0, 0);
+    if (dayDate <= todayEnd) {
+      const { count } = getDaySpending(d);
+      if (count === 0) {
+        noSpendDaysCount++;
+      }
+    }
+  }
+
   const daysOfWeek = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
+  // Native Swipe Handlers
   const [touchStart, setTouchStart] = useState(null);
   const [touchEnd, setTouchEnd] = useState(null);
-
   const minSwipeDistance = 50;
 
   const handleTouchStart = (e) => {
@@ -69,11 +86,19 @@ export default function AnimatedCalendar({
 
   return (
     <div className="glass-panel p-6 rounded-3xl border border-white/10 shadow-2xl overflow-hidden select-none">
-      {/* Clean Header */}
-      <div className="flex items-center justify-between mb-4">
+      {/* Header with Month Title and No-Spend Day Counter Badge */}
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
         <div>
           <h3 className="text-xl font-bold text-white tracking-wide">{monthName} {year}</h3>
         </div>
+
+        {/* ⭐ Glowing No-Spend Counter Badge */}
+        {noSpendDaysCount > 0 && (
+          <div className="flex items-center gap-1.5 px-3 py-1 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-semibold shadow-sm shadow-amber-500/10">
+            <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+            <span><b>{noSpendDaysCount}</b> No-Spend Days this month • Great discipline!</span>
+          </div>
+        )}
       </div>
 
       {/* Days of week */}
@@ -111,6 +136,11 @@ export default function AnimatedCalendar({
               const { count, total, dateStr } = getDaySpending(dayNum);
               const isSelected = selectedDate === dateStr;
 
+              // Check if day has passed or is today with zero spendings
+              const dayDate = new Date(year, month, dayNum, 0, 0, 0);
+              const isPastOrToday = dayDate <= todayEnd;
+              const isNoSpendDay = isPastOrToday && count === 0;
+
               return (
                 <div
                   key={dayNum}
@@ -120,26 +150,46 @@ export default function AnimatedCalendar({
                       ? 'border-cyan-400 bg-cyan-500/20 shadow-lg shadow-cyan-500/20'
                       : count > 0
                       ? 'border-purple-500/40 bg-purple-500/10'
+                      : isNoSpendDay
+                      ? 'border-amber-500/25 bg-amber-500/[0.04] hover:border-amber-500/40'
                       : 'border-white/5 bg-white/[0.02] hover:border-white/20'
                   }`}
                 >
                   <div className="flex justify-between items-center">
-                    <span className={`text-xs font-bold ${isSelected ? 'text-cyan-300' : 'text-gray-300'}`}>
+                    <span className={`text-xs font-bold ${
+                      isSelected
+                        ? 'text-cyan-300'
+                        : isNoSpendDay
+                        ? 'text-amber-200'
+                        : 'text-gray-300'
+                    }`}>
                       {dayNum}
                     </span>
-                    {count > 0 && (
+
+                    {/* Blue dot for spending day vs Golden Star for zero-spend day */}
+                    {count > 0 ? (
                       <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
-                    )}
+                    ) : isNoSpendDay ? (
+                      <span className="text-[11px] text-amber-400 drop-shadow" title="No-Spend Day! ⭐">
+                        ⭐
+                      </span>
+                    ) : null}
                   </div>
 
-                  {count > 0 && (
+                  {count > 0 ? (
                     <div className="text-right">
                       <p className="text-[10px] text-gray-400">{count} {count === 1 ? 'item' : 'items'}</p>
                       <p className="text-xs font-bold text-pink-400 truncate">
                         ₹{total >= 1000 ? `${(total / 1000).toFixed(1)}k` : Math.round(total)}
                       </p>
                     </div>
-                  )}
+                  ) : isNoSpendDay ? (
+                    <div className="text-right">
+                      <span className="text-[9px] font-semibold text-amber-400/90 bg-amber-500/15 px-1.5 py-0.5 rounded-md border border-amber-500/25">
+                        ₹0 Spent
+                      </span>
+                    </div>
+                  ) : null}
                 </div>
               );
             })}
