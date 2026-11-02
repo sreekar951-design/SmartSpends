@@ -102,7 +102,7 @@ export default function App() {
     }
   };
 
-  // 💰 MONTHLY SPENDING CALCULATION (For the currently viewed month)
+  // Monthly total calculation
   const safeDate = viewDate instanceof Date && !isNaN(viewDate) ? viewDate : new Date();
   const currentMonth = safeDate.getMonth();
   const currentYear = safeDate.getFullYear();
@@ -135,7 +135,6 @@ export default function App() {
               <p className="text-xs text-gray-400">Personal Expense Tracker</p>
             </div>
 
-            {/* Top Right Stats Box (Now Yearly Total) */}
             <TopRightStats 
               expenses={expenses} 
               user={user} 
@@ -144,9 +143,8 @@ export default function App() {
             />
           </div>
 
-          {/* Action Row: Monthly Card to the Left of Add Spending Button */}
+          {/* Action Row: Monthly Card to Left of Add Spending Button */}
           <div className="flex flex-wrap items-center justify-between sm:justify-end gap-3">
-            {/* 📈 MONTHLY SPENDING CARD (NOW NEXT TO ADD SPENDING BUTTON) */}
             <div className="flex items-center gap-3 bg-white/5 border border-white/10 px-4 py-2 rounded-xl shadow-lg">
               <div className="p-2 bg-purple-500/20 rounded-lg text-purple-400">
                 <TrendingUp className="w-5 h-5" />
@@ -161,7 +159,6 @@ export default function App() {
               </div>
             </div>
 
-            {/* + Add Spending Button */}
             <motion.button
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
@@ -184,12 +181,14 @@ export default function App() {
               />
             </div>
 
+            {/* Day-to-Day List View strictly isolated to current month */}
             <div className="lg:col-span-5">
               <ExpenseList
                 expenses={expenses}
                 onDelete={handleDeleteExpense}
                 filterDate={selectedDate}
                 onClearFilter={() => setSelectedDate(null)}
+                viewDate={viewDate}
               />
             </div>
           </div>

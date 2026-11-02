@@ -11,10 +11,23 @@ const categoryIcons = {
   'Other': <HelpCircle className="w-4 h-4 text-gray-400" />,
 };
 
-export default function ExpenseList({ expenses, onDelete, filterDate, onClearFilter }) {
+export default function ExpenseList({ expenses = [], onDelete, filterDate, onClearFilter, viewDate = new Date() }) {
+  const safeDate = viewDate instanceof Date && !isNaN(viewDate) ? viewDate : new Date();
+  const currentMonth = safeDate.getMonth();
+  const currentYear = safeDate.getFullYear();
+  const monthName = safeDate.toLocaleString('default', { month: 'long' });
+
+  // 1. Strictly filter expenses belonging to the currently viewed month and year
+  const monthExpenses = (Array.isArray(expenses) ? expenses : []).filter((item) => {
+    if (!item || !item.date) return false;
+    const d = new Date(item.date);
+    return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+  });
+
+  // 2. If a specific date is tapped on the calendar, filter for that day; otherwise show all for this month
   const displayExpenses = filterDate
-    ? expenses.filter((item) => item.date === filterDate)
-    : expenses;
+    ? monthExpenses.filter((item) => item.date === filterDate)
+    : monthExpenses;
 
   return (
     <div className="glass-panel p-6 rounded-3xl border border-white/10 shadow-2xl flex flex-col h-full">
@@ -22,7 +35,7 @@ export default function ExpenseList({ expenses, onDelete, filterDate, onClearFil
         <div>
           <h3 className="text-lg font-bold text-white">Day-to-Day Transactions</h3>
           <p className="text-xs text-gray-400">
-            {filterDate ? `Filtered by ${filterDate}` : 'All recorded activities'}
+            {filterDate ? `Filtered by ${filterDate}` : `${monthName} ${currentYear} activities`}
           </p>
         </div>
         {filterDate && (
@@ -43,7 +56,7 @@ export default function ExpenseList({ expenses, onDelete, filterDate, onClearFil
               animate={{ opacity: 1 }}
               className="py-12 text-center text-gray-500 text-sm"
             >
-              No spending logged for this period.
+              No spending logged for {filterDate ? filterDate : `${monthName} ${currentYear}`}.
             </motion.div>
           ) : (
             displayExpenses.map((exp) => (
@@ -61,10 +74,12 @@ export default function ExpenseList({ expenses, onDelete, filterDate, onClearFil
                   </div>
                   <div>
                     <h4 className="font-semibold text-white text-sm">{exp.title}</h4>
-                    {/* Only Date displayed - Time removed */}
-                    <div className="flex items-center gap-3 text-[11px] text-gray-400 mt-0.5">
+                    <div className="flex items-center gap-2 text-[11px] text-gray-400 mt-0.5">
                       <span className="flex items-center gap-1">
                         <Calendar className="w-3 h-3 text-gray-500" /> {exp.date}
+                      </span>
+                      <span className="px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/20 text-[10px]">
+                        {exp.paymentMethod || 'UPI'}
                       </span>
                     </div>
                   </div>
