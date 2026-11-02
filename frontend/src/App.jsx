@@ -6,10 +6,15 @@ import TopRightStats from './components/TopRightStats';
 import AnimatedCalendar from './components/AnimatedCalendar';
 import ExpenseForm from './components/ExpenseForm';
 import ExpenseList from './components/ExpenseList';
+import Navbar from './components/Navbar';
+import AnalyticsView from './components/AnalyticsView';
+import BudgetView from './components/BudgetView';
+import SearchView from './components/SearchView';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 export default function App() {
+  const [activeTab, setActiveTab] = useState('dashboard'); // 'dashboard' | 'analytics' | 'budget' | 'search'
   const [token, setToken] = useState('');
   const [user, setUser] = useState(null);
 
@@ -18,7 +23,7 @@ export default function App() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [viewDate, setViewDate] = useState(new Date());
 
-  // Auto-lock on app minimize
+  // Auto-lock when minimized
   useEffect(() => {
     const handleAutoLock = () => {
       if (document.visibilityState === 'hidden') {
@@ -102,7 +107,7 @@ export default function App() {
     }
   };
 
-  // Monthly total calculation
+  // Monthly Total for current viewDate
   const safeDate = viewDate instanceof Date && !isNaN(viewDate) ? viewDate : new Date();
   const currentMonth = safeDate.getMonth();
   const currentYear = safeDate.getFullYear();
@@ -125,8 +130,8 @@ export default function App() {
       {!user ? (
         <AuthModal onLoginSuccess={handleLoginSuccess} />
       ) : (
-        <div className="max-w-7xl mx-auto space-y-6">
-          {/* Top Bar Header with Yearly Stats */}
+        <div className="max-w-7xl mx-auto space-y-6 pb-12">
+          {/* Header Bar */}
           <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
             <div>
               <h1 className="text-3xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-purple-400 via-pink-400 to-cyan-400">
@@ -143,7 +148,10 @@ export default function App() {
             />
           </div>
 
-          {/* Action Row: Monthly Card to Left of Add Spending Button */}
+          {/* PAGE NAVIGATION TABS */}
+          <Navbar activeTab={activeTab} setActiveTab={setActiveTab} />
+
+          {/* Action Row: Monthly Card + Add Spending Button */}
           <div className="flex flex-wrap items-center justify-between sm:justify-end gap-3">
             <div className="flex items-center gap-3 bg-white/5 border border-white/10 px-4 py-2 rounded-xl shadow-lg">
               <div className="p-2 bg-purple-500/20 rounded-lg text-purple-400">
@@ -169,30 +177,44 @@ export default function App() {
             </motion.button>
           </div>
 
-          {/* Main Dashboard Layout */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-            <div className="lg:col-span-7">
-              <AnimatedCalendar
-                expenses={expenses}
-                selectedDate={selectedDate}
-                onSelectDate={setSelectedDate}
-                viewDate={viewDate}
-                onViewDateChange={setViewDate}
-              />
-            </div>
+          {/* ================= PAGE SWITCHER ================= */}
+          {activeTab === 'dashboard' && (
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+              <div className="lg:col-span-7">
+                <AnimatedCalendar
+                  expenses={expenses}
+                  selectedDate={selectedDate}
+                  onSelectDate={setSelectedDate}
+                  viewDate={viewDate}
+                  onViewDateChange={setViewDate}
+                />
+              </div>
 
-            {/* Day-to-Day List View strictly isolated to current month */}
-            <div className="lg:col-span-5">
-              <ExpenseList
-                expenses={expenses}
-                onDelete={handleDeleteExpense}
-                filterDate={selectedDate}
-                onClearFilter={() => setSelectedDate(null)}
-                viewDate={viewDate}
-              />
+              <div className="lg:col-span-5">
+                <ExpenseList
+                  expenses={expenses}
+                  onDelete={handleDeleteExpense}
+                  filterDate={selectedDate}
+                  onClearFilter={() => setSelectedDate(null)}
+                  viewDate={viewDate}
+                />
+              </div>
             </div>
-          </div>
+          )}
 
+          {activeTab === 'analytics' && (
+            <AnalyticsView expenses={expenses} viewDate={viewDate} />
+          )}
+
+          {activeTab === 'budget' && (
+            <BudgetView expenses={expenses} viewDate={viewDate} />
+          )}
+
+          {activeTab === 'search' && (
+            <SearchView expenses={expenses} onDelete={handleDeleteExpense} />
+          )}
+
+          {/* Add Expense Popup */}
           <ExpenseForm
             isOpen={isFormOpen}
             onClose={() => setIsFormOpen(false)}
