@@ -1,37 +1,40 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { PlusCircle, Tag, Calendar, Clock, X } from 'lucide-react';
+import { PlusCircle, Tag, Calendar, CreditCard, X } from 'lucide-react';
 
 export default function ExpenseForm({ onAddExpense, isOpen, onClose }) {
   const now = new Date();
   const currentDateStr = now.toISOString().split('T')[0];
-  const currentTimeStr = now.toTimeString().slice(0, 5);
 
   const [title, setTitle] = useState('');
   const [amount, setAmount] = useState('');
   const [category, setCategory] = useState('Food & Dining');
+  const [paymentMethod, setPaymentMethod] = useState('UPI'); // 'UPI' | 'CASH' | 'CARD'
   const [date, setDate] = useState(currentDateStr);
-  const [time, setTime] = useState(currentTimeStr);
 
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!title || !amount) return;
 
-    // Convert to whole number (no decimals)
     const wholeAmount = parseInt(amount, 10);
     if (isNaN(wholeAmount) || wholeAmount <= 0) return;
+
+    // Time is automatically saved in background for chronological sorting
+    const currentTimeStr = new Date().toTimeString().slice(0, 5);
 
     onAddExpense({
       title,
       amount: wholeAmount,
       category,
+      paymentMethod,
       date,
-      time
+      time: currentTimeStr
     });
 
     setTitle('');
     setAmount('');
     setCategory('Food & Dining');
+    setPaymentMethod('UPI');
     onClose();
   };
 
@@ -56,6 +59,7 @@ export default function ExpenseForm({ onAddExpense, isOpen, onClose }) {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Purpose / Title */}
           <div>
             <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">Purpose / Title</label>
             <input
@@ -64,10 +68,11 @@ export default function ExpenseForm({ onAddExpense, isOpen, onClose }) {
               placeholder="e.g. Grocery Shopping, Gas, Netflix"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-cyan-400"
+              className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-cyan-400 text-sm"
             />
           </div>
 
+          {/* Amount (₹) & Category */}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">Amount (₹)</label>
@@ -81,7 +86,7 @@ export default function ExpenseForm({ onAddExpense, isOpen, onClose }) {
                   placeholder="0"
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
-                  className="w-full pl-9 pr-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-cyan-400"
+                  className="w-full pl-9 pr-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-cyan-400 text-sm font-medium"
                 />
               </div>
             </div>
@@ -93,7 +98,7 @@ export default function ExpenseForm({ onAddExpense, isOpen, onClose }) {
                 <select
                   value={category}
                   onChange={(e) => setCategory(e.target.value)}
-                  className="w-full pl-9 pr-4 py-3 bg-[#131926] border border-white/10 rounded-xl text-white focus:outline-none focus:border-cyan-400"
+                  className="w-full pl-9 pr-4 py-3 bg-[#131926] border border-white/10 rounded-xl text-white focus:outline-none focus:border-cyan-400 text-sm"
                 >
                   <option value="Food & Dining">Food & Dining</option>
                   <option value="Transportation">Transportation</option>
@@ -106,6 +111,7 @@ export default function ExpenseForm({ onAddExpense, isOpen, onClose }) {
             </div>
           </div>
 
+          {/* Date & Payment Method (Time is completely removed!) */}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">Date</label>
@@ -115,21 +121,24 @@ export default function ExpenseForm({ onAddExpense, isOpen, onClose }) {
                   required
                   value={date}
                   onChange={(e) => setDate(e.target.value)}
-                  className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white focus:outline-none focus:border-cyan-400"
+                  className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white focus:outline-none focus:border-cyan-400 text-sm"
                 />
               </div>
             </div>
 
+            {/* PAYMENT METHOD DROPDOWN WITH YOUR 3 EXACT OPTIONS */}
             <div>
-              <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">Time</label>
+              <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1 block">Payment Method</label>
               <div className="relative">
-                <input
-                  type="time"
-                  required
-                  value={time}
-                  onChange={(e) => setTime(e.target.value)}
-                  className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white focus:outline-none focus:border-cyan-400"
-                />
+                <select
+                  value={paymentMethod}
+                  onChange={(e) => setPaymentMethod(e.target.value)}
+                  className="w-full px-4 py-3 bg-[#131926] border border-white/10 rounded-xl text-white font-medium focus:outline-none focus:border-cyan-400 text-sm"
+                >
+                  <option value="CASH">💵 CASH</option>
+                  <option value="UPI">📱 UPI</option>
+                  <option value="CARD">💳 CARD</option>
+                </select>
               </div>
             </div>
           </div>
@@ -138,7 +147,7 @@ export default function ExpenseForm({ onAddExpense, isOpen, onClose }) {
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
             type="submit"
-            className="w-full mt-3 py-3.5 bg-gradient-to-r from-purple-500 to-cyan-500 hover:from-purple-600 hover:to-cyan-600 font-bold text-white rounded-xl shadow-lg shadow-cyan-500/20"
+            className="w-full mt-3 py-3.5 bg-gradient-to-r from-purple-500 to-cyan-500 hover:from-purple-600 hover:to-cyan-600 font-bold text-white rounded-xl shadow-lg shadow-cyan-500/20 text-sm"
           >
             Save Transaction
           </motion.button>
