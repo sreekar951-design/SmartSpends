@@ -203,15 +203,25 @@ export default function App() {
           )}
 
           {activeTab === 'analytics' && (
-            <AnalyticsView expenses={expenses} viewDate={viewDate} />
+            <AnalyticsView 
+              expenses={expenses} 
+              viewDate={viewDate} 
+              onViewDateChange={setViewDate} 
+            />
           )}
 
           {activeTab === 'budget' && (
-            <BudgetView expenses={expenses} viewDate={viewDate} />
+            <BudgetView 
+              expenses={expenses} 
+              viewDate={viewDate} 
+            />
           )}
 
           {activeTab === 'search' && (
-            <SearchView expenses={expenses} onDelete={handleDeleteExpense} />
+            <SearchView 
+              expenses={expenses} 
+              onDelete={handleDeleteExpense} 
+            />
           )}
 
           {/* Add Expense Popup */}
