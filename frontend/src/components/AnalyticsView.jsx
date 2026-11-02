@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { PieChart, CreditCard, ChevronLeft, ChevronRight, TrendingDown, TrendingUp, Calendar, Utensils, Car, ShoppingBag, Film, Receipt, HelpCircle } from 'lucide-react';
+import { PieChart, CreditCard, ChevronLeft, ChevronRight, Calendar, Utensils, Car, ShoppingBag, Film, Receipt, HelpCircle } from 'lucide-react';
 
 const categoryColors = {
   'Food & Dining': '#f97316',
@@ -12,30 +12,32 @@ const categoryColors = {
 };
 
 export default function AnalyticsView({ expenses = [], viewDate = new Date(), onViewDateChange = () => {} }) {
-  // Mode: 'month' | 'year'
   const [filterScope, setFilterScope] = useState('month');
   const [activeDate, setActiveDate] = useState(viewDate instanceof Date && !isNaN(viewDate) ? viewDate : new Date());
+
+  // 🎯 ACTIVE HOVER / TAP STATE FOR DONUT CHART
+  const [activeCategory, setActiveCategory] = useState(null);
 
   const year = activeDate.getFullYear();
   const month = activeDate.getMonth();
   const monthName = activeDate.toLocaleString('default', { month: 'long' });
 
-  // Navigate between months
   const handlePrev = () => {
     const prev = new Date(year, month - 1, 1);
     setActiveDate(prev);
     onViewDateChange(prev);
+    setActiveCategory(null);
   };
 
   const handleNext = () => {
     const next = new Date(year, month + 1, 1);
     setActiveDate(next);
     onViewDateChange(next);
+    setActiveCategory(null);
   };
 
   const safeExpenses = Array.isArray(expenses) ? expenses : [];
 
-  // Filter based on Single Month or Entire Year
   const filteredExpenses = safeExpenses.filter((item) => {
     if (!item || !item.date) return false;
     const d = new Date(item.date);
@@ -72,12 +74,12 @@ export default function AnalyticsView({ expenses = [], viewDate = new Date(), on
 
   const paymentModes = [
     { name: 'UPI / GPay', key: 'UPI', icon: '📱', color: 'from-cyan-500 to-blue-500' },
-    { name: 'Cash', key: 'Cash', icon: '💵', color: 'from-emerald-500 to-green-500' },
-    { name: 'Card', key: 'Card', icon: '💳', color: 'from-purple-500 to-pink-500' },
+    { name: 'Cash', key: 'CASH', icon: '💵', color: 'from-emerald-500 to-green-500' },
+    { name: 'Card', key: 'CARD', icon: '💳', color: 'from-purple-500 to-pink-500' },
     { name: 'Net Banking', key: 'Net Banking', icon: '🏦', color: 'from-amber-500 to-yellow-500' },
   ];
 
-  // 📊 CALCULATE PAST 6 MONTHS COMPARISON
+  // Calculate Past 6 Months
   const pastMonths = [];
   for (let i = 5; i >= 0; i--) {
     const d = new Date(year, month - i, 1);
@@ -98,18 +100,17 @@ export default function AnalyticsView({ expenses = [], viewDate = new Date(), on
   const maxMonthSpend = Math.max(...pastMonths.map((m) => m.total), 1);
 
   // SVG Donut calculation
-  const radius = 65;
+  const radius = 64;
   const circumference = 2 * Math.PI * radius;
   let accumulatedPercent = 0;
 
   return (
-    <div className="space-y-6 select-none">
+    <div className="space-y-6 select-none" onClick={() => setActiveCategory(null)}>
       {/* ================= TOP MONTH / SCOPE SWITCHER ================= */}
       <div className="glass-panel p-4 rounded-3xl border border-white/10 shadow-xl flex flex-col sm:flex-row items-center justify-between gap-4">
-        {/* Month Arrows */}
         <div className="flex items-center gap-3">
           <button
-            onClick={handlePrev}
+            onClick={(e) => { e.stopPropagation(); handlePrev(); }}
             className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 border border-white/10 transition"
             title="Previous Month"
           >
@@ -126,7 +127,7 @@ export default function AnalyticsView({ expenses = [], viewDate = new Date(), on
           </div>
 
           <button
-            onClick={handleNext}
+            onClick={(e) => { e.stopPropagation(); handleNext(); }}
             className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 border border-white/10 transition"
             title="Next Month"
           >
@@ -134,10 +135,9 @@ export default function AnalyticsView({ expenses = [], viewDate = new Date(), on
           </button>
         </div>
 
-        {/* Month vs Full Year Toggle */}
         <div className="flex items-center gap-1.5 p-1 bg-white/5 rounded-xl border border-white/10 text-xs">
           <button
-            onClick={() => setFilterScope('month')}
+            onClick={(e) => { e.stopPropagation(); setFilterScope('month'); setActiveCategory(null); }}
             className={`px-3 py-1.5 rounded-lg font-semibold transition ${
               filterScope === 'month' ? 'bg-cyan-500 text-white shadow' : 'text-gray-400 hover:text-white'
             }`}
@@ -145,7 +145,7 @@ export default function AnalyticsView({ expenses = [], viewDate = new Date(), on
             {monthName} Only
           </button>
           <button
-            onClick={() => setFilterScope('year')}
+            onClick={(e) => { e.stopPropagation(); setFilterScope('year'); setActiveCategory(null); }}
             className={`px-3 py-1.5 rounded-lg font-semibold transition ${
               filterScope === 'year' ? 'bg-purple-500 text-white shadow' : 'text-gray-400 hover:text-white'
             }`}
@@ -157,12 +157,15 @@ export default function AnalyticsView({ expenses = [], viewDate = new Date(), on
 
       {/* ================= DONUT CHART & PAYMENT MODES ================= */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* DONUT CHART */}
+        {/* INTERACTIVE DONUT CHART */}
         <div className="lg:col-span-7 glass-panel p-6 rounded-3xl border border-white/10 shadow-2xl flex flex-col justify-between">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-bold text-gray-300 uppercase tracking-wider">
-              Category Breakdown ({filterScope === 'year' ? `${year}` : `${monthName}`})
-            </h3>
+            <div>
+              <h3 className="text-sm font-bold text-gray-300 uppercase tracking-wider">
+                Category Breakdown ({filterScope === 'year' ? `${year}` : `${monthName}`})
+              </h3>
+              <p className="text-[11px] text-cyan-400">Hover or tap on any slice to see details</p>
+            </div>
             <span className="text-xs text-gray-400 font-semibold">{categoryList.length} Categories</span>
           </div>
 
@@ -172,9 +175,10 @@ export default function AnalyticsView({ expenses = [], viewDate = new Date(), on
             </div>
           ) : (
             <div className="flex flex-col sm:flex-row items-center justify-around gap-6">
-              {/* Glowing SVG Donut Chart */}
-              <div className="relative w-48 h-48 flex items-center justify-center">
-                <svg className="w-full h-full transform -rotate-90" viewBox="0 0 160 160">
+              {/* Interactive Glowing SVG Donut Chart */}
+              <div className="relative w-56 h-56 flex items-center justify-center">
+                <svg className="w-full h-full transform -rotate-90 overflow-visible" viewBox="0 0 160 160">
+                  {/* Background Track */}
                   <circle
                     cx="80"
                     cy="80"
@@ -183,10 +187,13 @@ export default function AnalyticsView({ expenses = [], viewDate = new Date(), on
                     strokeWidth="18"
                     fill="transparent"
                   />
+
+                  {/* Slices with Hover and Touch Triggers */}
                   {categoryList.map((cat, i) => {
                     const strokeDashoffset = circumference - (cat.percentage / 100) * circumference;
                     const rotation = (accumulatedPercent / 100) * 360;
                     accumulatedPercent += cat.percentage;
+                    const isSelected = activeCategory?.category === cat.category;
 
                     return (
                       <circle
@@ -195,43 +202,99 @@ export default function AnalyticsView({ expenses = [], viewDate = new Date(), on
                         cy="80"
                         r={radius}
                         stroke={cat.color}
-                        strokeWidth="18"
+                        strokeWidth={isSelected ? 26 : 18}
                         strokeDasharray={circumference}
                         strokeDashoffset={strokeDashoffset}
                         strokeLinecap="round"
                         fill="transparent"
+                        className="cursor-pointer transition-all duration-200"
                         style={{
                           transformOrigin: 'center',
                           transform: `rotate(${rotation}deg)`,
-                          transition: 'stroke-dashoffset 0.8s ease'
+                          opacity: activeCategory ? (isSelected ? 1 : 0.25) : 1,
+                          filter: isSelected ? `drop-shadow(0 0 8px ${cat.color})` : 'none'
+                        }}
+                        onMouseEnter={() => setActiveCategory(cat)}
+                        onMouseLeave={() => setActiveCategory(null)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setActiveCategory(isSelected ? null : cat);
                         }}
                       />
                     );
                   })}
                 </svg>
 
-                <div className="absolute flex flex-col items-center">
-                  <span className="text-xs text-gray-400">Total</span>
-                  <span className="text-base font-extrabold text-white">
-                    ₹{totalPeriodAmount >= 1000 ? `${(totalPeriodAmount / 1000).toFixed(1)}k` : Math.round(totalPeriodAmount)}
-                  </span>
+                {/* 📍 DYNAMIC CENTER DISPLAY (Changes on Hover / Tap!) */}
+                <div className="absolute flex flex-col items-center justify-center text-center px-3 pointer-events-none transition-all duration-200">
+                  {activeCategory ? (
+                    <>
+                      <span className="text-xs font-bold text-cyan-300 max-w-[110px] truncate leading-tight">
+                        {activeCategory.category}
+                      </span>
+                      <span className="text-lg font-extrabold text-white my-0.5">
+                        ₹{Math.round(activeCategory.amount).toLocaleString('en-IN')}
+                      </span>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-cyan-400/20 text-cyan-300 border border-cyan-400/30">
+                        {activeCategory.percentage}% of total
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-xs text-gray-400">Total Spent</span>
+                      <span className="text-lg font-extrabold text-white my-0.5">
+                        ₹{totalPeriodAmount >= 1000 ? `${(totalPeriodAmount / 1000).toFixed(1)}k` : Math.round(totalPeriodAmount)}
+                      </span>
+                      <span className="text-[10px] text-gray-500 font-medium">
+                        Touch any color
+                      </span>
+                    </>
+                  )}
                 </div>
               </div>
 
-              {/* Category Legend List */}
-              <div className="flex-1 w-full space-y-2 max-h-56 overflow-y-auto pr-1">
-                {categoryList.map((cat, idx) => (
-                  <div key={idx} className="flex items-center justify-between text-xs p-2 rounded-xl bg-white/[0.02] border border-white/5">
-                    <div className="flex items-center gap-2">
-                      <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: cat.color }} />
-                      <span className="text-gray-300 font-medium">{cat.category}</span>
+              {/* Interactive Category Legend List */}
+              <div className="flex-1 w-full space-y-2 max-h-60 overflow-y-auto pr-1">
+                {categoryList.map((cat, idx) => {
+                  const isSelected = activeCategory?.category === cat.category;
+                  return (
+                    <div
+                      key={idx}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setActiveCategory(isSelected ? null : cat);
+                      }}
+                      onMouseEnter={() => setActiveCategory(cat)}
+                      onMouseLeave={() => setActiveCategory(null)}
+                      className={`flex items-center justify-between text-xs p-2.5 rounded-xl cursor-pointer transition-all duration-150 ${
+                        isSelected
+                          ? 'bg-white/10 border border-cyan-400/50 shadow-md scale-102'
+                          : 'bg-white/[0.02] border border-white/5 hover:bg-white/[0.06]'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <div
+                          className="w-3 h-3 rounded-full transition-transform"
+                          style={{
+                            backgroundColor: cat.color,
+                            transform: isSelected ? 'scale(1.3)' : 'scale(1)'
+                          }}
+                        />
+                        <span className={`font-medium ${isSelected ? 'text-white font-bold' : 'text-gray-300'}`}>
+                          {cat.category}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 font-bold">
+                        <span className={isSelected ? 'text-cyan-300' : 'text-white'}>
+                          ₹{Math.round(cat.amount).toLocaleString('en-IN')}
+                        </span>
+                        <span className="text-gray-400 text-[11px] font-normal w-9 text-right">
+                          ({cat.percentage}%)
+                        </span>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2 font-bold">
-                      <span className="text-white">₹{Math.round(cat.amount).toLocaleString('en-IN')}</span>
-                      <span className="text-gray-400 text-[11px] font-normal w-9 text-right">({cat.percentage}%)</span>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}
@@ -283,7 +346,7 @@ export default function AnalyticsView({ expenses = [], viewDate = new Date(), on
         </div>
       </div>
 
-      {/* ================= 3. MONTH-OVER-MONTH COMPARISON BARS ================= */}
+      {/* ================= PREVIOUS MONTHS HISTORY ================= */}
       <div className="glass-panel p-6 rounded-3xl border border-white/10 shadow-2xl space-y-4">
         <div className="flex items-center justify-between">
           <div>
@@ -302,10 +365,12 @@ export default function AnalyticsView({ expenses = [], viewDate = new Date(), on
             return (
               <div
                 key={idx}
-                onClick={() => {
+                onClick={(e) => {
+                  e.stopPropagation();
                   setFilterScope('month');
                   setActiveDate(pm.date);
                   onViewDateChange(pm.date);
+                  setActiveCategory(null);
                 }}
                 className={`p-3 rounded-2xl border flex flex-col justify-between cursor-pointer transition-all duration-200 active:scale-95 ${
                   isSelected
@@ -320,7 +385,6 @@ export default function AnalyticsView({ expenses = [], viewDate = new Date(), on
                   {isSelected && <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />}
                 </div>
 
-                {/* Vertical Bar Graph */}
                 <div className="h-20 w-full flex items-end justify-center py-2">
                   <div className="w-8 rounded-lg bg-white/5 overflow-hidden flex items-end p-0.5">
                     <motion.div
